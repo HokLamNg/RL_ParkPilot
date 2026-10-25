@@ -1,0 +1,610 @@
+# Full PPO run from scratch: the whole training path of round6_s1 in ONE run, so the final model
+# comes from one config instead of a chain of fine-tunes (final_curric_s3 -> geometry -> occupancy -> widened -> round 5
+# -> route pilot -> round 6, about 200M steps over 7 configs). Third attempt (full3_s1-s3).
+# Same inputs as round6_s1 from step 0 (bay-size and near-ray inputs, --bay-size-obs --near-rays, no widening), network
+# 2 x 256. One curriculum with 18 lessons. Every environment parameter below has the SAME lesson names and completion
+# criteria, so they all move to the next lesson together:
+#   S0-S9   curriculum stages 0-9 as Experiment A (reward threshold 3.1, smoothed)
+#   S10     full task (stage 10)                                  until 30% of the run (60M)
+#   G1      + geometry randomisation          (finetune_geom)     until 35%  (70M)
+#   G2      + occupancy randomisation         (finetune_occ)      until 42.5% (85M)
+#   G3-G6   + generated car parks 10/25/40/50%, layout difficulty 0/1/2/2, hard cases 25/35/50/50%, geometry share 0.5,
+#           8 s stuck window near the bay     (round 5)           until 47.5 / 52.5 / 57.5 / 65% (95 / 105 / 115 / 130M)
+#   G7      + far starts 40% of episodes and the route-distance reward (round 6)   to the end (70M)
+# Later lessons advance on training progress (with at least 20,000 episodes each), so a slow early curriculum cannot
+# stall them. The reward distance is the straight line until G7, then along drivable space, as in the chain.
+# PPO settings: Experiment A's (batch 1024, buffer 10240, gamma 0.99, time horizon 128). Round 6's settings (buffer
+# 40960, batch 2048, gamma 0.995, horizon 256) made both earlier attempts stall in stage 3 (full_s1-s3, full2_s1-s3) and
+# the stall tests (fp_*) showed they were the cause. Learning rate 3e-4 and clip 0.2 decay linearly over the run
+# (ML-Agents decays the clip range to 0.1). Entropy bonus constant 5e-3 (Experiment A's value).
+# Budget 200M steps. Uses the current build (Builds/ParkPilot). From the project folder, one window per seed:
+#   mlagents-learn Config/parking_ppo_full.yaml --run-id=full3_s1 --seed=1 --env=Builds/ParkPilot/ParkPilot.exe --no-graphics --num-envs=4 --base-port=5005 --env-args --bay-size-obs --near-rays
+#   ... --run-id=full3_s2 --seed=2 --base-port=5015 ...   and   --run-id=full3_s3 --seed=3 --base-port=5025 ...
+behaviors:
+  ParkingAgent:
+    trainer_type: ppo
+    hyperparameters:
+      batch_size: 1024
+      buffer_size: 10240
+      learning_rate: 3.0e-4
+      beta: 5.0e-3
+      epsilon: 0.2
+      lambd: 0.95
+      num_epoch: 3
+      learning_rate_schedule: linear
+      beta_schedule: constant     # keep exploring in the late lessons
+      epsilon_schedule: linear
+    network_settings:
+      normalize: true
+      hidden_units: 256
+      num_layers: 2
+    reward_signals:
+      extrinsic:
+        gamma: 0.99
+        strength: 1.0
+    keep_checkpoints: 100
+    checkpoint_interval: 2000000
+    max_steps: 200000000
+    time_horizon: 128
+    summary_freq: 10000
+
+environment_parameters:
+  sparse_reward: 0.0
+  route_clearance: 0.3
+  empty_bay_cost: 3.0
+
+  curriculum_stage:
+    curriculum:
+      - name: S0_FixedBayNear
+        completion_criteria: {measure: reward, behavior: ParkingAgent, signal_smoothing: true, min_lesson_length: 1000, threshold: 3.1}
+        value: 0.0
+      - name: S1_ModerateSpawnHeading
+        completion_criteria: {measure: reward, behavior: ParkingAgent, signal_smoothing: true, min_lesson_length: 1000, threshold: 3.1}
+        value: 1.0
+      - name: S2_RandomSpawnHeading
+        completion_criteria: {measure: reward, behavior: ParkingAgent, signal_smoothing: true, min_lesson_length: 1000, threshold: 3.1}
+        value: 2.0
+      - name: S3_StaticParkedCars
+        completion_criteria: {measure: reward, behavior: ParkingAgent, signal_smoothing: true, min_lesson_length: 1000, threshold: 3.1}
+        value: 3.0
+      - name: S4_RandomInnerBay
+        completion_criteria: {measure: reward, behavior: ParkingAgent, signal_smoothing: true, min_lesson_length: 1000, threshold: 3.1}
+        value: 4.0
+      - name: S5_OuterRowPractice
+        completion_criteria: {measure: reward, behavior: ParkingAgent, signal_smoothing: true, min_lesson_length: 1000, threshold: 3.1}
+        value: 5.0
+      - name: S6_InnerPlusOuterRows
+        completion_criteria: {measure: reward, behavior: ParkingAgent, signal_smoothing: true, min_lesson_length: 1000, threshold: 3.1}
+        value: 6.0
+      - name: S7_PlusCornerBays
+        completion_criteria: {measure: reward, behavior: ParkingAgent, signal_smoothing: true, min_lesson_length: 1000, threshold: 3.1}
+        value: 7.0
+      - name: S8_PlusSidewaysAllBays
+        completion_criteria: {measure: reward, behavior: ParkingAgent, signal_smoothing: true, min_lesson_length: 1000, threshold: 3.1}
+        value: 8.0
+      - name: S9_SharperTurnarounds
+        completion_criteria: {measure: reward, behavior: ParkingAgent, signal_smoothing: true, min_lesson_length: 1000, threshold: 3.1}
+        value: 9.0
+      - name: S10_FullTask
+        completion_criteria: {measure: progress, behavior: ParkingAgent, min_lesson_length: 20000, threshold: 0.3}
+        value: 10.0
+      - name: G1_Geometry
+        completion_criteria: {measure: progress, behavior: ParkingAgent, min_lesson_length: 20000, threshold: 0.35}
+        value: 10.0
+      - name: G2_Occupancy
+        completion_criteria: {measure: progress, behavior: ParkingAgent, min_lesson_length: 20000, threshold: 0.425}
+        value: 10.0
+      - name: G3_GeneratedWide
+        completion_criteria: {measure: progress, behavior: ParkingAgent, min_lesson_length: 20000, threshold: 0.475}
+        value: 10.0
+      - name: G4_GeneratedWalls
+        completion_criteria: {measure: progress, behavior: ParkingAgent, min_lesson_length: 20000, threshold: 0.525}
+        value: 10.0
+      - name: G5_GeneratedFull
+        completion_criteria: {measure: progress, behavior: ParkingAgent, min_lesson_length: 20000, threshold: 0.575}
+        value: 10.0
+      - name: G6_GeneratedHalf
+        completion_criteria: {measure: progress, behavior: ParkingAgent, min_lesson_length: 20000, threshold: 0.65}
+        value: 10.0
+      - name: G7_FarStarts
+        value: 10.0
+  geometry_randomization:
+    curriculum:
+      - name: S0_FixedBayNear
+        completion_criteria: {measure: reward, behavior: ParkingAgent, signal_smoothing: true, min_lesson_length: 1000, threshold: 3.1}
+        value: 0.0
+      - name: S1_ModerateSpawnHeading
+        completion_criteria: {measure: reward, behavior: ParkingAgent, signal_smoothing: true, min_lesson_length: 1000, threshold: 3.1}
+        value: 0.0
+      - name: S2_RandomSpawnHeading
+        completion_criteria: {measure: reward, behavior: ParkingAgent, signal_smoothing: true, min_lesson_length: 1000, threshold: 3.1}
+        value: 0.0
+      - name: S3_StaticParkedCars
+        completion_criteria: {measure: reward, behavior: ParkingAgent, signal_smoothing: true, min_lesson_length: 1000, threshold: 3.1}
+        value: 0.0
+      - name: S4_RandomInnerBay
+        completion_criteria: {measure: reward, behavior: ParkingAgent, signal_smoothing: true, min_lesson_length: 1000, threshold: 3.1}
+        value: 0.0
+      - name: S5_OuterRowPractice
+        completion_criteria: {measure: reward, behavior: ParkingAgent, signal_smoothing: true, min_lesson_length: 1000, threshold: 3.1}
+        value: 0.0
+      - name: S6_InnerPlusOuterRows
+        completion_criteria: {measure: reward, behavior: ParkingAgent, signal_smoothing: true, min_lesson_length: 1000, threshold: 3.1}
+        value: 0.0
+      - name: S7_PlusCornerBays
+        completion_criteria: {measure: reward, behavior: ParkingAgent, signal_smoothing: true, min_lesson_length: 1000, threshold: 3.1}
+        value: 0.0
+      - name: S8_PlusSidewaysAllBays
+        completion_criteria: {measure: reward, behavior: ParkingAgent, signal_smoothing: true, min_lesson_length: 1000, threshold: 3.1}
+        value: 0.0
+      - name: S9_SharperTurnarounds
+        completion_criteria: {measure: reward, behavior: ParkingAgent, signal_smoothing: true, min_lesson_length: 1000, threshold: 3.1}
+        value: 0.0
+      - name: S10_FullTask
+        completion_criteria: {measure: progress, behavior: ParkingAgent, min_lesson_length: 20000, threshold: 0.3}
+        value: 0.0
+      - name: G1_Geometry
+        completion_criteria: {measure: progress, behavior: ParkingAgent, min_lesson_length: 20000, threshold: 0.35}
+        value: 1.0
+      - name: G2_Occupancy
+        completion_criteria: {measure: progress, behavior: ParkingAgent, min_lesson_length: 20000, threshold: 0.425}
+        value: 1.0
+      - name: G3_GeneratedWide
+        completion_criteria: {measure: progress, behavior: ParkingAgent, min_lesson_length: 20000, threshold: 0.475}
+        value: 1.0
+      - name: G4_GeneratedWalls
+        completion_criteria: {measure: progress, behavior: ParkingAgent, min_lesson_length: 20000, threshold: 0.525}
+        value: 1.0
+      - name: G5_GeneratedFull
+        completion_criteria: {measure: progress, behavior: ParkingAgent, min_lesson_length: 20000, threshold: 0.575}
+        value: 1.0
+      - name: G6_GeneratedHalf
+        completion_criteria: {measure: progress, behavior: ParkingAgent, min_lesson_length: 20000, threshold: 0.65}
+        value: 1.0
+      - name: G7_FarStarts
+        value: 1.0
+  geometry_share:
+    curriculum:
+      - name: S0_FixedBayNear
+        completion_criteria: {measure: reward, behavior: ParkingAgent, signal_smoothing: true, min_lesson_length: 1000, threshold: 3.1}
+        value: 1.0
+      - name: S1_ModerateSpawnHeading
+        completion_criteria: {measure: reward, behavior: ParkingAgent, signal_smoothing: true, min_lesson_length: 1000, threshold: 3.1}
+        value: 1.0
+      - name: S2_RandomSpawnHeading
+        completion_criteria: {measure: reward, behavior: ParkingAgent, signal_smoothing: true, min_lesson_length: 1000, threshold: 3.1}
+        value: 1.0
+      - name: S3_StaticParkedCars
+        completion_criteria: {measure: reward, behavior: ParkingAgent, signal_smoothing: true, min_lesson_length: 1000, threshold: 3.1}
+        value: 1.0
+      - name: S4_RandomInnerBay
+        completion_criteria: {measure: reward, behavior: ParkingAgent, signal_smoothing: true, min_lesson_length: 1000, threshold: 3.1}
+        value: 1.0
+      - name: S5_OuterRowPractice
+        completion_criteria: {measure: reward, behavior: ParkingAgent, signal_smoothing: true, min_lesson_length: 1000, threshold: 3.1}
+        value: 1.0
+      - name: S6_InnerPlusOuterRows
+        completion_criteria: {measure: reward, behavior: ParkingAgent, signal_smoothing: true, min_lesson_length: 1000, threshold: 3.1}
+        value: 1.0
+      - name: S7_PlusCornerBays
+        completion_criteria: {measure: reward, behavior: ParkingAgent, signal_smoothing: true, min_lesson_length: 1000, threshold: 3.1}
+        value: 1.0
+      - name: S8_PlusSidewaysAllBays
+        completion_criteria: {measure: reward, behavior: ParkingAgent, signal_smoothing: true, min_lesson_length: 1000, threshold: 3.1}
+        value: 1.0
+      - name: S9_SharperTurnarounds
+        completion_criteria: {measure: reward, behavior: ParkingAgent, signal_smoothing: true, min_lesson_length: 1000, threshold: 3.1}
+        value: 1.0
+      - name: S10_FullTask
+        completion_criteria: {measure: progress, behavior: ParkingAgent, min_lesson_length: 20000, threshold: 0.3}
+        value: 1.0
+      - name: G1_Geometry
+        completion_criteria: {measure: progress, behavior: ParkingAgent, min_lesson_length: 20000, threshold: 0.35}
+        value: 1.0
+      - name: G2_Occupancy
+        completion_criteria: {measure: progress, behavior: ParkingAgent, min_lesson_length: 20000, threshold: 0.425}
+        value: 1.0
+      - name: G3_GeneratedWide
+        completion_criteria: {measure: progress, behavior: ParkingAgent, min_lesson_length: 20000, threshold: 0.475}
+        value: 0.5
+      - name: G4_GeneratedWalls
+        completion_criteria: {measure: progress, behavior: ParkingAgent, min_lesson_length: 20000, threshold: 0.525}
+        value: 0.5
+      - name: G5_GeneratedFull
+        completion_criteria: {measure: progress, behavior: ParkingAgent, min_lesson_length: 20000, threshold: 0.575}
+        value: 0.5
+      - name: G6_GeneratedHalf
+        completion_criteria: {measure: progress, behavior: ParkingAgent, min_lesson_length: 20000, threshold: 0.65}
+        value: 0.5
+      - name: G7_FarStarts
+        value: 0.5
+  occupancy_randomization:
+    curriculum:
+      - name: S0_FixedBayNear
+        completion_criteria: {measure: reward, behavior: ParkingAgent, signal_smoothing: true, min_lesson_length: 1000, threshold: 3.1}
+        value: 0.0
+      - name: S1_ModerateSpawnHeading
+        completion_criteria: {measure: reward, behavior: ParkingAgent, signal_smoothing: true, min_lesson_length: 1000, threshold: 3.1}
+        value: 0.0
+      - name: S2_RandomSpawnHeading
+        completion_criteria: {measure: reward, behavior: ParkingAgent, signal_smoothing: true, min_lesson_length: 1000, threshold: 3.1}
+        value: 0.0
+      - name: S3_StaticParkedCars
+        completion_criteria: {measure: reward, behavior: ParkingAgent, signal_smoothing: true, min_lesson_length: 1000, threshold: 3.1}
+        value: 0.0
+      - name: S4_RandomInnerBay
+        completion_criteria: {measure: reward, behavior: ParkingAgent, signal_smoothing: true, min_lesson_length: 1000, threshold: 3.1}
+        value: 0.0
+      - name: S5_OuterRowPractice
+        completion_criteria: {measure: reward, behavior: ParkingAgent, signal_smoothing: true, min_lesson_length: 1000, threshold: 3.1}
+        value: 0.0
+      - name: S6_InnerPlusOuterRows
+        completion_criteria: {measure: reward, behavior: ParkingAgent, signal_smoothing: true, min_lesson_length: 1000, threshold: 3.1}
+        value: 0.0
+      - name: S7_PlusCornerBays
+        completion_criteria: {measure: reward, behavior: ParkingAgent, signal_smoothing: true, min_lesson_length: 1000, threshold: 3.1}
+        value: 0.0
+      - name: S8_PlusSidewaysAllBays
+        completion_criteria: {measure: reward, behavior: ParkingAgent, signal_smoothing: true, min_lesson_length: 1000, threshold: 3.1}
+        value: 0.0
+      - name: S9_SharperTurnarounds
+        completion_criteria: {measure: reward, behavior: ParkingAgent, signal_smoothing: true, min_lesson_length: 1000, threshold: 3.1}
+        value: 0.0
+      - name: S10_FullTask
+        completion_criteria: {measure: progress, behavior: ParkingAgent, min_lesson_length: 20000, threshold: 0.3}
+        value: 0.0
+      - name: G1_Geometry
+        completion_criteria: {measure: progress, behavior: ParkingAgent, min_lesson_length: 20000, threshold: 0.35}
+        value: 0.0
+      - name: G2_Occupancy
+        completion_criteria: {measure: progress, behavior: ParkingAgent, min_lesson_length: 20000, threshold: 0.425}
+        value: 1.0
+      - name: G3_GeneratedWide
+        completion_criteria: {measure: progress, behavior: ParkingAgent, min_lesson_length: 20000, threshold: 0.475}
+        value: 1.0
+      - name: G4_GeneratedWalls
+        completion_criteria: {measure: progress, behavior: ParkingAgent, min_lesson_length: 20000, threshold: 0.525}
+        value: 1.0
+      - name: G5_GeneratedFull
+        completion_criteria: {measure: progress, behavior: ParkingAgent, min_lesson_length: 20000, threshold: 0.575}
+        value: 1.0
+      - name: G6_GeneratedHalf
+        completion_criteria: {measure: progress, behavior: ParkingAgent, min_lesson_length: 20000, threshold: 0.65}
+        value: 1.0
+      - name: G7_FarStarts
+        value: 1.0
+  stuck_steps_near_bay:
+    curriculum:
+      - name: S0_FixedBayNear
+        completion_criteria: {measure: reward, behavior: ParkingAgent, signal_smoothing: true, min_lesson_length: 1000, threshold: 3.1}
+        value: 0.0
+      - name: S1_ModerateSpawnHeading
+        completion_criteria: {measure: reward, behavior: ParkingAgent, signal_smoothing: true, min_lesson_length: 1000, threshold: 3.1}
+        value: 0.0
+      - name: S2_RandomSpawnHeading
+        completion_criteria: {measure: reward, behavior: ParkingAgent, signal_smoothing: true, min_lesson_length: 1000, threshold: 3.1}
+        value: 0.0
+      - name: S3_StaticParkedCars
+        completion_criteria: {measure: reward, behavior: ParkingAgent, signal_smoothing: true, min_lesson_length: 1000, threshold: 3.1}
+        value: 0.0
+      - name: S4_RandomInnerBay
+        completion_criteria: {measure: reward, behavior: ParkingAgent, signal_smoothing: true, min_lesson_length: 1000, threshold: 3.1}
+        value: 0.0
+      - name: S5_OuterRowPractice
+        completion_criteria: {measure: reward, behavior: ParkingAgent, signal_smoothing: true, min_lesson_length: 1000, threshold: 3.1}
+        value: 0.0
+      - name: S6_InnerPlusOuterRows
+        completion_criteria: {measure: reward, behavior: ParkingAgent, signal_smoothing: true, min_lesson_length: 1000, threshold: 3.1}
+        value: 0.0
+      - name: S7_PlusCornerBays
+        completion_criteria: {measure: reward, behavior: ParkingAgent, signal_smoothing: true, min_lesson_length: 1000, threshold: 3.1}
+        value: 0.0
+      - name: S8_PlusSidewaysAllBays
+        completion_criteria: {measure: reward, behavior: ParkingAgent, signal_smoothing: true, min_lesson_length: 1000, threshold: 3.1}
+        value: 0.0
+      - name: S9_SharperTurnarounds
+        completion_criteria: {measure: reward, behavior: ParkingAgent, signal_smoothing: true, min_lesson_length: 1000, threshold: 3.1}
+        value: 0.0
+      - name: S10_FullTask
+        completion_criteria: {measure: progress, behavior: ParkingAgent, min_lesson_length: 20000, threshold: 0.3}
+        value: 0.0
+      - name: G1_Geometry
+        completion_criteria: {measure: progress, behavior: ParkingAgent, min_lesson_length: 20000, threshold: 0.35}
+        value: 0.0
+      - name: G2_Occupancy
+        completion_criteria: {measure: progress, behavior: ParkingAgent, min_lesson_length: 20000, threshold: 0.425}
+        value: 0.0
+      - name: G3_GeneratedWide
+        completion_criteria: {measure: progress, behavior: ParkingAgent, min_lesson_length: 20000, threshold: 0.475}
+        value: 400.0
+      - name: G4_GeneratedWalls
+        completion_criteria: {measure: progress, behavior: ParkingAgent, min_lesson_length: 20000, threshold: 0.525}
+        value: 400.0
+      - name: G5_GeneratedFull
+        completion_criteria: {measure: progress, behavior: ParkingAgent, min_lesson_length: 20000, threshold: 0.575}
+        value: 400.0
+      - name: G6_GeneratedHalf
+        completion_criteria: {measure: progress, behavior: ParkingAgent, min_lesson_length: 20000, threshold: 0.65}
+        value: 400.0
+      - name: G7_FarStarts
+        value: 400.0
+  procedural_layout:
+    curriculum:
+      - name: S0_FixedBayNear
+        completion_criteria: {measure: reward, behavior: ParkingAgent, signal_smoothing: true, min_lesson_length: 1000, threshold: 3.1}
+        value: 0.0
+      - name: S1_ModerateSpawnHeading
+        completion_criteria: {measure: reward, behavior: ParkingAgent, signal_smoothing: true, min_lesson_length: 1000, threshold: 3.1}
+        value: 0.0
+      - name: S2_RandomSpawnHeading
+        completion_criteria: {measure: reward, behavior: ParkingAgent, signal_smoothing: true, min_lesson_length: 1000, threshold: 3.1}
+        value: 0.0
+      - name: S3_StaticParkedCars
+        completion_criteria: {measure: reward, behavior: ParkingAgent, signal_smoothing: true, min_lesson_length: 1000, threshold: 3.1}
+        value: 0.0
+      - name: S4_RandomInnerBay
+        completion_criteria: {measure: reward, behavior: ParkingAgent, signal_smoothing: true, min_lesson_length: 1000, threshold: 3.1}
+        value: 0.0
+      - name: S5_OuterRowPractice
+        completion_criteria: {measure: reward, behavior: ParkingAgent, signal_smoothing: true, min_lesson_length: 1000, threshold: 3.1}
+        value: 0.0
+      - name: S6_InnerPlusOuterRows
+        completion_criteria: {measure: reward, behavior: ParkingAgent, signal_smoothing: true, min_lesson_length: 1000, threshold: 3.1}
+        value: 0.0
+      - name: S7_PlusCornerBays
+        completion_criteria: {measure: reward, behavior: ParkingAgent, signal_smoothing: true, min_lesson_length: 1000, threshold: 3.1}
+        value: 0.0
+      - name: S8_PlusSidewaysAllBays
+        completion_criteria: {measure: reward, behavior: ParkingAgent, signal_smoothing: true, min_lesson_length: 1000, threshold: 3.1}
+        value: 0.0
+      - name: S9_SharperTurnarounds
+        completion_criteria: {measure: reward, behavior: ParkingAgent, signal_smoothing: true, min_lesson_length: 1000, threshold: 3.1}
+        value: 0.0
+      - name: S10_FullTask
+        completion_criteria: {measure: progress, behavior: ParkingAgent, min_lesson_length: 20000, threshold: 0.3}
+        value: 0.0
+      - name: G1_Geometry
+        completion_criteria: {measure: progress, behavior: ParkingAgent, min_lesson_length: 20000, threshold: 0.35}
+        value: 0.0
+      - name: G2_Occupancy
+        completion_criteria: {measure: progress, behavior: ParkingAgent, min_lesson_length: 20000, threshold: 0.425}
+        value: 0.0
+      - name: G3_GeneratedWide
+        completion_criteria: {measure: progress, behavior: ParkingAgent, min_lesson_length: 20000, threshold: 0.475}
+        value: 0.1
+      - name: G4_GeneratedWalls
+        completion_criteria: {measure: progress, behavior: ParkingAgent, min_lesson_length: 20000, threshold: 0.525}
+        value: 0.25
+      - name: G5_GeneratedFull
+        completion_criteria: {measure: progress, behavior: ParkingAgent, min_lesson_length: 20000, threshold: 0.575}
+        value: 0.4
+      - name: G6_GeneratedHalf
+        completion_criteria: {measure: progress, behavior: ParkingAgent, min_lesson_length: 20000, threshold: 0.65}
+        value: 0.5
+      - name: G7_FarStarts
+        value: 0.5
+  procedural_difficulty:
+    curriculum:
+      - name: S0_FixedBayNear
+        completion_criteria: {measure: reward, behavior: ParkingAgent, signal_smoothing: true, min_lesson_length: 1000, threshold: 3.1}
+        value: 2.0
+      - name: S1_ModerateSpawnHeading
+        completion_criteria: {measure: reward, behavior: ParkingAgent, signal_smoothing: true, min_lesson_length: 1000, threshold: 3.1}
+        value: 2.0
+      - name: S2_RandomSpawnHeading
+        completion_criteria: {measure: reward, behavior: ParkingAgent, signal_smoothing: true, min_lesson_length: 1000, threshold: 3.1}
+        value: 2.0
+      - name: S3_StaticParkedCars
+        completion_criteria: {measure: reward, behavior: ParkingAgent, signal_smoothing: true, min_lesson_length: 1000, threshold: 3.1}
+        value: 2.0
+      - name: S4_RandomInnerBay
+        completion_criteria: {measure: reward, behavior: ParkingAgent, signal_smoothing: true, min_lesson_length: 1000, threshold: 3.1}
+        value: 2.0
+      - name: S5_OuterRowPractice
+        completion_criteria: {measure: reward, behavior: ParkingAgent, signal_smoothing: true, min_lesson_length: 1000, threshold: 3.1}
+        value: 2.0
+      - name: S6_InnerPlusOuterRows
+        completion_criteria: {measure: reward, behavior: ParkingAgent, signal_smoothing: true, min_lesson_length: 1000, threshold: 3.1}
+        value: 2.0
+      - name: S7_PlusCornerBays
+        completion_criteria: {measure: reward, behavior: ParkingAgent, signal_smoothing: true, min_lesson_length: 1000, threshold: 3.1}
+        value: 2.0
+      - name: S8_PlusSidewaysAllBays
+        completion_criteria: {measure: reward, behavior: ParkingAgent, signal_smoothing: true, min_lesson_length: 1000, threshold: 3.1}
+        value: 2.0
+      - name: S9_SharperTurnarounds
+        completion_criteria: {measure: reward, behavior: ParkingAgent, signal_smoothing: true, min_lesson_length: 1000, threshold: 3.1}
+        value: 2.0
+      - name: S10_FullTask
+        completion_criteria: {measure: progress, behavior: ParkingAgent, min_lesson_length: 20000, threshold: 0.3}
+        value: 2.0
+      - name: G1_Geometry
+        completion_criteria: {measure: progress, behavior: ParkingAgent, min_lesson_length: 20000, threshold: 0.35}
+        value: 2.0
+      - name: G2_Occupancy
+        completion_criteria: {measure: progress, behavior: ParkingAgent, min_lesson_length: 20000, threshold: 0.425}
+        value: 2.0
+      - name: G3_GeneratedWide
+        completion_criteria: {measure: progress, behavior: ParkingAgent, min_lesson_length: 20000, threshold: 0.475}
+        value: 0.0
+      - name: G4_GeneratedWalls
+        completion_criteria: {measure: progress, behavior: ParkingAgent, min_lesson_length: 20000, threshold: 0.525}
+        value: 1.0
+      - name: G5_GeneratedFull
+        completion_criteria: {measure: progress, behavior: ParkingAgent, min_lesson_length: 20000, threshold: 0.575}
+        value: 2.0
+      - name: G6_GeneratedHalf
+        completion_criteria: {measure: progress, behavior: ParkingAgent, min_lesson_length: 20000, threshold: 0.65}
+        value: 2.0
+      - name: G7_FarStarts
+        value: 2.0
+  hard_case_share:
+    curriculum:
+      - name: S0_FixedBayNear
+        completion_criteria: {measure: reward, behavior: ParkingAgent, signal_smoothing: true, min_lesson_length: 1000, threshold: 3.1}
+        value: 0.0
+      - name: S1_ModerateSpawnHeading
+        completion_criteria: {measure: reward, behavior: ParkingAgent, signal_smoothing: true, min_lesson_length: 1000, threshold: 3.1}
+        value: 0.0
+      - name: S2_RandomSpawnHeading
+        completion_criteria: {measure: reward, behavior: ParkingAgent, signal_smoothing: true, min_lesson_length: 1000, threshold: 3.1}
+        value: 0.0
+      - name: S3_StaticParkedCars
+        completion_criteria: {measure: reward, behavior: ParkingAgent, signal_smoothing: true, min_lesson_length: 1000, threshold: 3.1}
+        value: 0.0
+      - name: S4_RandomInnerBay
+        completion_criteria: {measure: reward, behavior: ParkingAgent, signal_smoothing: true, min_lesson_length: 1000, threshold: 3.1}
+        value: 0.0
+      - name: S5_OuterRowPractice
+        completion_criteria: {measure: reward, behavior: ParkingAgent, signal_smoothing: true, min_lesson_length: 1000, threshold: 3.1}
+        value: 0.0
+      - name: S6_InnerPlusOuterRows
+        completion_criteria: {measure: reward, behavior: ParkingAgent, signal_smoothing: true, min_lesson_length: 1000, threshold: 3.1}
+        value: 0.0
+      - name: S7_PlusCornerBays
+        completion_criteria: {measure: reward, behavior: ParkingAgent, signal_smoothing: true, min_lesson_length: 1000, threshold: 3.1}
+        value: 0.0
+      - name: S8_PlusSidewaysAllBays
+        completion_criteria: {measure: reward, behavior: ParkingAgent, signal_smoothing: true, min_lesson_length: 1000, threshold: 3.1}
+        value: 0.0
+      - name: S9_SharperTurnarounds
+        completion_criteria: {measure: reward, behavior: ParkingAgent, signal_smoothing: true, min_lesson_length: 1000, threshold: 3.1}
+        value: 0.0
+      - name: S10_FullTask
+        completion_criteria: {measure: progress, behavior: ParkingAgent, min_lesson_length: 20000, threshold: 0.3}
+        value: 0.0
+      - name: G1_Geometry
+        completion_criteria: {measure: progress, behavior: ParkingAgent, min_lesson_length: 20000, threshold: 0.35}
+        value: 0.0
+      - name: G2_Occupancy
+        completion_criteria: {measure: progress, behavior: ParkingAgent, min_lesson_length: 20000, threshold: 0.425}
+        value: 0.0
+      - name: G3_GeneratedWide
+        completion_criteria: {measure: progress, behavior: ParkingAgent, min_lesson_length: 20000, threshold: 0.475}
+        value: 0.25
+      - name: G4_GeneratedWalls
+        completion_criteria: {measure: progress, behavior: ParkingAgent, min_lesson_length: 20000, threshold: 0.525}
+        value: 0.35
+      - name: G5_GeneratedFull
+        completion_criteria: {measure: progress, behavior: ParkingAgent, min_lesson_length: 20000, threshold: 0.575}
+        value: 0.5
+      - name: G6_GeneratedHalf
+        completion_criteria: {measure: progress, behavior: ParkingAgent, min_lesson_length: 20000, threshold: 0.65}
+        value: 0.5
+      - name: G7_FarStarts
+        value: 0.5
+  far_start_share:
+    curriculum:
+      - name: S0_FixedBayNear
+        completion_criteria: {measure: reward, behavior: ParkingAgent, signal_smoothing: true, min_lesson_length: 1000, threshold: 3.1}
+        value: 0.0
+      - name: S1_ModerateSpawnHeading
+        completion_criteria: {measure: reward, behavior: ParkingAgent, signal_smoothing: true, min_lesson_length: 1000, threshold: 3.1}
+        value: 0.0
+      - name: S2_RandomSpawnHeading
+        completion_criteria: {measure: reward, behavior: ParkingAgent, signal_smoothing: true, min_lesson_length: 1000, threshold: 3.1}
+        value: 0.0
+      - name: S3_StaticParkedCars
+        completion_criteria: {measure: reward, behavior: ParkingAgent, signal_smoothing: true, min_lesson_length: 1000, threshold: 3.1}
+        value: 0.0
+      - name: S4_RandomInnerBay
+        completion_criteria: {measure: reward, behavior: ParkingAgent, signal_smoothing: true, min_lesson_length: 1000, threshold: 3.1}
+        value: 0.0
+      - name: S5_OuterRowPractice
+        completion_criteria: {measure: reward, behavior: ParkingAgent, signal_smoothing: true, min_lesson_length: 1000, threshold: 3.1}
+        value: 0.0
+      - name: S6_InnerPlusOuterRows
+        completion_criteria: {measure: reward, behavior: ParkingAgent, signal_smoothing: true, min_lesson_length: 1000, threshold: 3.1}
+        value: 0.0
+      - name: S7_PlusCornerBays
+        completion_criteria: {measure: reward, behavior: ParkingAgent, signal_smoothing: true, min_lesson_length: 1000, threshold: 3.1}
+        value: 0.0
+      - name: S8_PlusSidewaysAllBays
+        completion_criteria: {measure: reward, behavior: ParkingAgent, signal_smoothing: true, min_lesson_length: 1000, threshold: 3.1}
+        value: 0.0
+      - name: S9_SharperTurnarounds
+        completion_criteria: {measure: reward, behavior: ParkingAgent, signal_smoothing: true, min_lesson_length: 1000, threshold: 3.1}
+        value: 0.0
+      - name: S10_FullTask
+        completion_criteria: {measure: progress, behavior: ParkingAgent, min_lesson_length: 20000, threshold: 0.3}
+        value: 0.0
+      - name: G1_Geometry
+        completion_criteria: {measure: progress, behavior: ParkingAgent, min_lesson_length: 20000, threshold: 0.35}
+        value: 0.0
+      - name: G2_Occupancy
+        completion_criteria: {measure: progress, behavior: ParkingAgent, min_lesson_length: 20000, threshold: 0.425}
+        value: 0.0
+      - name: G3_GeneratedWide
+        completion_criteria: {measure: progress, behavior: ParkingAgent, min_lesson_length: 20000, threshold: 0.475}
+        value: 0.0
+      - name: G4_GeneratedWalls
+        completion_criteria: {measure: progress, behavior: ParkingAgent, min_lesson_length: 20000, threshold: 0.525}
+        value: 0.0
+      - name: G5_GeneratedFull
+        completion_criteria: {measure: progress, behavior: ParkingAgent, min_lesson_length: 20000, threshold: 0.575}
+        value: 0.0
+      - name: G6_GeneratedHalf
+        completion_criteria: {measure: progress, behavior: ParkingAgent, min_lesson_length: 20000, threshold: 0.65}
+        value: 0.0
+      - name: G7_FarStarts
+        value: 0.4
+  route_distance:
+    curriculum:
+      - name: S0_FixedBayNear
+        completion_criteria: {measure: reward, behavior: ParkingAgent, signal_smoothing: true, min_lesson_length: 1000, threshold: 3.1}
+        value: 0.0
+      - name: S1_ModerateSpawnHeading
+        completion_criteria: {measure: reward, behavior: ParkingAgent, signal_smoothing: true, min_lesson_length: 1000, threshold: 3.1}
+        value: 0.0
+      - name: S2_RandomSpawnHeading
+        completion_criteria: {measure: reward, behavior: ParkingAgent, signal_smoothing: true, min_lesson_length: 1000, threshold: 3.1}
+        value: 0.0
+      - name: S3_StaticParkedCars
+        completion_criteria: {measure: reward, behavior: ParkingAgent, signal_smoothing: true, min_lesson_length: 1000, threshold: 3.1}
+        value: 0.0
+      - name: S4_RandomInnerBay
+        completion_criteria: {measure: reward, behavior: ParkingAgent, signal_smoothing: true, min_lesson_length: 1000, threshold: 3.1}
+        value: 0.0
+      - name: S5_OuterRowPractice
+        completion_criteria: {measure: reward, behavior: ParkingAgent, signal_smoothing: true, min_lesson_length: 1000, threshold: 3.1}
+        value: 0.0
+      - name: S6_InnerPlusOuterRows
+        completion_criteria: {measure: reward, behavior: ParkingAgent, signal_smoothing: true, min_lesson_length: 1000, threshold: 3.1}
+        value: 0.0
+      - name: S7_PlusCornerBays
+        completion_criteria: {measure: reward, behavior: ParkingAgent, signal_smoothing: true, min_lesson_length: 1000, threshold: 3.1}
+        value: 0.0
+      - name: S8_PlusSidewaysAllBays
+        completion_criteria: {measure: reward, behavior: ParkingAgent, signal_smoothing: true, min_lesson_length: 1000, threshold: 3.1}
+        value: 0.0
+      - name: S9_SharperTurnarounds
+        completion_criteria: {measure: reward, behavior: ParkingAgent, signal_smoothing: true, min_lesson_length: 1000, threshold: 3.1}
+        value: 0.0
+      - name: S10_FullTask
+        completion_criteria: {measure: progress, behavior: ParkingAgent, min_lesson_length: 20000, threshold: 0.3}
+        value: 0.0
+      - name: G1_Geometry
+        completion_criteria: {measure: progress, behavior: ParkingAgent, min_lesson_length: 20000, threshold: 0.35}
+        value: 0.0
+      - name: G2_Occupancy
+        completion_criteria: {measure: progress, behavior: ParkingAgent, min_lesson_length: 20000, threshold: 0.425}
+        value: 0.0
+      - name: G3_GeneratedWide
+        completion_criteria: {measure: progress, behavior: ParkingAgent, min_lesson_length: 20000, threshold: 0.475}
+        value: 0.0
+      - name: G4_GeneratedWalls
+        completion_criteria: {measure: progress, behavior: ParkingAgent, min_lesson_length: 20000, threshold: 0.525}
+        value: 0.0
+      - name: G5_GeneratedFull
+        completion_criteria: {measure: progress, behavior: ParkingAgent, min_lesson_length: 20000, threshold: 0.575}
+        value: 0.0
+      - name: G6_GeneratedHalf
+        completion_criteria: {measure: progress, behavior: ParkingAgent, min_lesson_length: 20000, threshold: 0.65}
+        value: 0.0
+      - name: G7_FarStarts
+        value: 1.0
+
+engine_settings:
+  time_scale: 20
+  target_frame_rate: -1
+  capture_frame_rate: 60

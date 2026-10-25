@@ -1,0 +1,46 @@
+# Fine-tuning for real car parks (ParkPilot Assist): geometry randomisation on the full task.
+# Starts from the best Experiment A model (final_curric_s3) and keeps every PPO setting of Experiment A;
+# only the environment changes: stage 10 (full task) with geometry_randomization on, i.e. per episode a
+# random target-bay width (2.8-3.7 m) and length (4.6-5.4 m, open end fixed) and parked cars moved
+# (-0.3..+1.0 m deeper, +-0.25 m sideways), turned (+-3 deg) and resized (x0.9-1.05 wide, x0.9-1.1 long).
+# Observations and actions are unchanged, so --initialize-from works.
+#
+# Build the training player first, then, from the project folder, one window per seed:
+#   mlagents-learn Config/parking_ppo_finetune_geomrand.yaml --initialize-from=final_curric_s3 --run-id=finetune_geom_s1 --seed=1 --env=Builds/ParkPilot/ParkPilot.exe --no-graphics --num-envs=4 --base-port=5005
+#   ... --run-id=finetune_geom_s2 --seed=2 --base-port=5015
+#   ... --run-id=finetune_geom_s3 --seed=3 --base-port=5025
+behaviors:
+  ParkingAgent:
+    trainer_type: ppo
+    hyperparameters:
+      batch_size: 1024
+      buffer_size: 10240
+      learning_rate: 3.0e-4
+      beta: 5.0e-3
+      epsilon: 0.2
+      lambd: 0.95
+      num_epoch: 3
+      learning_rate_schedule: constant
+    network_settings:
+      normalize: true
+      hidden_units: 256
+      num_layers: 2
+    reward_signals:
+      extrinsic:
+        gamma: 0.99
+        strength: 1.0
+    keep_checkpoints: 30          # every checkpoint (15M / 500k)
+    checkpoint_interval: 500000
+    max_steps: 15000000           # fine-tuning budget (counted from 0 for the new run)
+    time_horizon: 128
+    summary_freq: 10000
+
+environment_parameters:
+  curriculum_stage: 10.0          # full task only
+  sparse_reward: 0.0
+  geometry_randomization: 1.0
+
+engine_settings:
+  time_scale: 20
+  target_frame_rate: -1
+  capture_frame_rate: 60

@@ -1,0 +1,6 @@
+Batch 1011-164400: 30/30 parked (100%), policy round5_s1, hand-over aisle
+  Inner: 16/16 parked
+  Outer: 10/10 parked
+  Corner: 4/4 parked
+  parked in 5.0 s on average
+  hand-over distance: parked 8.9 m, failed 0.0 m on average

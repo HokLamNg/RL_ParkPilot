@@ -1,0 +1,5 @@
+run,time,policy,handover_mode,target,bay,group,occupied_neighbours,occupied_bays,handover_x,handover_z,handover_yaw,handover_distance,outcome,collided_with,seconds,final_distance,final_heading_error,nose_in,approach,entries,soft_contacts,cumulative_reward,cnn_used,cnn_visible,cnn_correct,cnn_false_free,cnn_false_occupied,cnn_p_target
+1011-032105_bay17,2026-10-11T03:21:13,finetune_occ_s3,centre,17,Bay_S2_E1,Inner,1,19,-0.51,0.01,90.7,18.60,Parked,,7.76,0.385,0.93,1,UTurn,1,0,4.138,1,30,30,0,0,0.045
+1011-032144_bay11,2026-10-11T03:21:52,finetune_occ_s3,centre,11,Bay_N2_E1,Inner,1,18,-0.51,0.01,90.7,18.59,Parked,,8.28,0.132,1.22,1,UTurn,1,0,4.407,1,30,30,0,0,0.043
+1011-032225_bay22,2026-10-11T03:22:34,finetune_occ_s3,centre,22,Bay_S1_E2,Outer,2,23,-0.51,0.01,90.7,22.18,Parked,,8.82,0.131,0.13,1,UTurn,1,0,4.534,1,30,30,0,0,0.005
+1011-032312_bay1,2026-10-11T03:23:19,finetune_occ_s3,centre,1,Bay_N1_W2,Outer,2,21,-0.51,0.01,90.7,21.52,Collision,car,6.88,12.364,24.64,1,UTurn,0,0,-1.041,1,30,30,0,0,0.002

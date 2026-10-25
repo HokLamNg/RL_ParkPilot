@@ -1,0 +1,145 @@
+# Experiment A: curriculum over ParkingEnvironment.stages (0 -> 10).  [v11]
+#
+# v2 (after curric_ppo_s1 stalled at the parked-cars stage):
+#   - learning_rate_schedule: constant (linear decayed to ~0 while the task was still getting harder)
+#   - extra stage 1 (heading ±45°) between "near & aligned" and "any spawn ±90°"
+#   - reward v2 (set in the prefab): step penalty -0.001, Max Step 1500, in-bay shaping term
+#   - thresholds re-derived for reward v2
+# v3 (after curric2_ppo_s1 collapsed at the final stage, ~6% success):
+#   - the old final stage is split into 3: random target first, then heading ±135°, then the full task
+# v4 (after curric3_ppo_s1 stuck at ~14% when the target became random):
+#   - random target introduced one bay group at a time: inner rows (4), + outer rows (5),
+#     + corner bays (6), + sideways bays (7); then ±135° (8) and the full task (9)
+#   - reward v3 (code): linear alignment term and a smooth in-bay score (see ParkingAgent.Potential)
+#   - per-group stats in TensorBoard: Parking/ByGroup/<Inner|Outer|Corner|Sideways>/...
+# v5 (after curric4_ppo_s1 plateaued at ~78% in stage 4; timeouts mostly at bays boxed in by cars/walls):
+#   - reward v4 (code): line-up term, +0.3 x (on the bay centre-line) x (near the bay)
+#   - tight-bay practice (prefab stages): tightBayChance 0.3 (stage 3), 0.5 (stages 4-9) fills both neighbours
+#   - stats by occupied neighbours: Parking/ByNeighbours/<0|1|2>/...
+#   - thresholds 2.2 -> 2.4 to keep "about 80% success" (reward v4 pays ~0.3 more per success)
+#
+# v6 (after curric5_ppo_s1: 0% success with both neighbours occupied; curves in, circles, hesitates):
+#   - reward v5 (code + prefab): line-up term requires being on the centre-line (0.75 m) AND facing along it
+#     (30 deg), weight 0.3 -> 0.5
+#   - soft contact (prefab stages 3-7): touches < 1 m/s cost -0.3 and the episode continues (max 3),
+#     -0.005 per step while touching; stages 8-9 keep hard contact. Stat: Parking/SoftContactsPerEpisode
+#   - beta 5e-3 -> 1e-2; thresholds 2.4 -> 2.5 (see below)
+#
+# v7 (curric6_ppo_s1 reached stage 5; video showed cars freezing at an angle near/partly in the bay):
+#   - reward v6 (code): stuck ending - no movement > 0.3 m / 10 deg for 3 s and not parked -> episode ends,
+#     -1 (shaped mode). Stats: Parking/StuckRate (also ByGroup / ByNeighbours)
+#   - beta 1e-2 -> 5e-3 (entropy had climbed to ~2.0); max_steps 12M -> 20M; keep every checkpoint
+#
+# v11 full-task run (no code changes): v11 passed stages 5-9 between 45.6M and 56M and reached stage 10
+#   (full task) exactly at 56M = max_steps. Raised max_steps to 64M to train the full task. Resume again.
+## v11 (v10 at 45.6M: success 59.5%, collisions 4.5%, cars now brake to ~0.1 m/s in the bay but reverse
+#      direction instead of holding (in-and-out hunting). Observation: successful outer parks are mostly
+#      U-turns ending REVERSED IN; the hunting ones are straight nose-in entries. Forward top speed was 5 m/s,
+#      reverse 3 m/s - nose-in entries arrive too fast):
+#   - car (prefab + code): maxForwardSpeed 5 -> 3 m/s (= reverse). Forward-velocity input now / 5 m/s fixed
+#   - reward v10 (code): slow-approach term, +0.3 x near (0 at 6 m) x slow (0 at 2 m/s)
+#   - logging (code): success by spawn heading / lateral / distance, approach shape (straight / curved /
+#     U-turn), finish direction (nose-in / reverse-in) and entry speed - to CONFIRM the observation
+#   - thresholds 2.9 -> 3.1 (success worth ~0.3 more, keeps ~80%); max_steps 56M. Resume again.
+## v10 (diagnostics at 40-42M: 86.5% of failed outer episodes were fully in the bay and aligned (best 1.2 deg,
+#      0.25 m off-centre) but never slower than ~0.57 m/s - they drive through the parked pose, ~4.7 entries):
+#   - reward v9 (code): stop term, +0.5 x in-bay score x aligned x slow (0 at >= 1 m/s)
+#   - car controller (code): throttle deadzone |t| < 0.15 brakes firmly (6 m/s^2) instead of coasting
+#   - thresholds 2.5 -> 2.9 (success worth ~0.5 more, keeps ~80%); max_steps 42M -> 52M. Resume again.
+## v9 (curric6_ppo_s1 at 30M: outer-row practice 46% -> 55%; boxed-in outer bays 89% but open ones ~49%;
+#     cars move in and out repeatedly at open outer bays - they can't tell exactly how far off they are):
+#   - observations (code): slot 5 sideways velocity (always ~0) -> depth along the bay / 3 m;
+#     slot 9 distance / 30 m (redundant) -> sideways offset from the bay centre-line / 2 m. Still 9 inputs.
+#   - reward v8 (code): no-progress window 6 s -> 10 s, so back-out-and-retry corrections have time to pay off
+#   - max_steps 30M -> 40M. Resume again (lesson 5, outer-row practice).
+## v8 (curric6_ppo_s1 at 20M: stage 5 at 71%, outer bays 50%; video showed in-out loops one bay off and
+#     sideways shuffles across outer bays that dodge the stuck ending):
+#   - reward v7 (code): no-progress ending - best shaping potential not improved by 0.02 for 6 s -> episode
+#     ends as NoProgress, -1 (shaped). Stats: Parking/NoProgressRate (also ByGroup / ByNeighbours)
+#   - new stage 5 "Outer-row practice" (outer bays only, spawn 5-8 m, ±1.5 m, ±45°); later stages renumbered 6-10
+#   - max_steps 20M -> 30M
+#   Resume again: the saved lesson index 5 now points at the new outer-row practice stage.
+#
+# v7 RESUMES the v6 run (keeps its weights and curriculum lesson 5):
+#   mlagents-learn Config/parking_ppo_curriculum.yaml --run-id=curric6_ppo_s1 --resume
+# (v6 was started with: --run-id=curric6_ppo_s1 --seed=1 --initialize-from=curric5_ppo_s1)
+# Fallback, if stages 0-3 don't pass within ~300k steps: start from an earlier end-of-stage-3 checkpoint
+# by uncommenting init_path below and running without --initialize-from.
+#
+# Lesson thresholds use mean episode reward (ML-Agents only supports reward/progress).
+# Reward v10: a successful episode scores ~4.2 (2.0 bonus + ~2.5 shaping - ~0.3 step penalty),
+# a crash, timeout, stuck or no-progress ending ~ -1, so a smoothed reward of 3.1 is roughly 80% success.
+# (Reward v9: ~3.9 per success -> 2.9.)
+# (Reward v5-v8: ~3.4 per success -> 2.5.)
+# (Reward v4: ~3.2 per success -> 2.4.)
+# (Same estimate for reward v3 gives 2.2 at 80% and predicted 2.08 at 78%; curric4 measured ~2.07.)
+# Confirm with TensorBoard "Parking/SuccessRate" and tune if needed.
+
+behaviors:
+  ParkingAgent:
+    trainer_type: ppo
+    # init_path: results/curric4_ppo_s1/ParkingAgent/ParkingAgent-799925.pt   # v4, end of stage 3 (stage 4 began at 840k)
+    hyperparameters:
+      batch_size: 1024
+      buffer_size: 10240
+      learning_rate: 3.0e-4
+      beta: 5.0e-3   # v7: back from 1.0e-2 (v6) - entropy had climbed to ~2.0 and precision was dropping
+      epsilon: 0.2
+      lambd: 0.95
+      num_epoch: 3
+      learning_rate_schedule: constant
+    network_settings:
+      normalize: true
+      hidden_units: 256
+      num_layers: 2
+    reward_signals:
+      extrinsic:
+        gamma: 0.99
+        strength: 1.0
+    keep_checkpoints: 320  # keep every checkpoint (64M / 200k) so we can restart from any curriculum stage
+    checkpoint_interval: 200000
+    max_steps: 64000000   # v11 full-task run: raised from 56M (stage 10 reached exactly at 56M)
+    time_horizon: 128
+    summary_freq: 10000
+
+environment_parameters:
+  sparse_reward: 0.0
+  curriculum_stage:
+    curriculum:
+      - name: S0_FixedBayNear
+        completion_criteria: {measure: reward, behavior: ParkingAgent, signal_smoothing: true, min_lesson_length: 500, threshold: 3.1}
+        value: 0.0
+      - name: S1_ModerateSpawnHeading
+        completion_criteria: {measure: reward, behavior: ParkingAgent, signal_smoothing: true, min_lesson_length: 1000, threshold: 3.1}
+        value: 1.0
+      - name: S2_RandomSpawnHeading
+        completion_criteria: {measure: reward, behavior: ParkingAgent, signal_smoothing: true, min_lesson_length: 1000, threshold: 3.1}
+        value: 2.0
+      - name: S3_StaticParkedCars
+        completion_criteria: {measure: reward, behavior: ParkingAgent, signal_smoothing: true, min_lesson_length: 1000, threshold: 3.1}
+        value: 3.0
+      - name: S4_RandomInnerBay
+        completion_criteria: {measure: reward, behavior: ParkingAgent, signal_smoothing: true, min_lesson_length: 1000, threshold: 3.1}
+        value: 4.0
+      - name: S5_OuterRowPractice
+        completion_criteria: {measure: reward, behavior: ParkingAgent, signal_smoothing: true, min_lesson_length: 1000, threshold: 3.1}
+        value: 5.0
+      - name: S6_InnerPlusOuterRows
+        completion_criteria: {measure: reward, behavior: ParkingAgent, signal_smoothing: true, min_lesson_length: 1000, threshold: 3.1}
+        value: 6.0
+      - name: S7_PlusCornerBays
+        completion_criteria: {measure: reward, behavior: ParkingAgent, signal_smoothing: true, min_lesson_length: 1000, threshold: 3.1}
+        value: 7.0
+      - name: S8_PlusSidewaysAllBays
+        completion_criteria: {measure: reward, behavior: ParkingAgent, signal_smoothing: true, min_lesson_length: 1000, threshold: 3.1}
+        value: 8.0
+      - name: S9_SharperTurnarounds
+        completion_criteria: {measure: reward, behavior: ParkingAgent, signal_smoothing: true, min_lesson_length: 1000, threshold: 3.1}
+        value: 9.0
+      - name: S10_FullTask
+        value: 10.0
+
+engine_settings:
+  time_scale: 20
+  target_frame_rate: -1
+  capture_frame_rate: 60

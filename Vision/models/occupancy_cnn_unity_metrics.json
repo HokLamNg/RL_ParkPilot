@@ -1,0 +1,29 @@
+{
+  "unity_val_acc_before": 0.45729303547963207,
+  "unity_val_acc": 0.9960578186596584,
+  "unity_val_confusion_true_by_pred": [
+    [
+      410,
+      1
+    ],
+    [
+      2,
+      348
+    ]
+  ],
+  "real_test_acc": 0.988750981932443,
+  "real_test_confusion_true_by_pred": [
+    [
+      13406,
+      143
+    ],
+    [
+      215,
+      18061
+    ]
+  ],
+  "unity_train_patches": 4605,
+  "unity_val_patches": 761,
+  "real_train_patches": 30000,
+  "epochs": 4
+}

@@ -1,0 +1,98 @@
+# Fine-tuning round 5: see the hard cases. Built on the failure analysis of round 4.
+# Same start as round 4 (finetune_occ_s3 widened, identical actions at step 0), so the difference to round 4 is this round's changes:
+#  1. Near-range ray sensor (ParkingAgent.NearRays, --near-rays): 31 rays over +-150 deg, 4 m, so pillars (0.4-0.7 m) close to
+#     the car cannot hide between the main sensor's 22.5-degree gaps. A pillar beside the bay was the largest failure factor
+#     (odds of failing x4-6), half of all collisions on generated car parks were pillars.
+#  2. Hard cases (hard_case_share): a share of generated-car-park episodes target a bay with a pillar beside it (else a narrow
+#     aisle under 8 m), and half of those start close (under 7 m), the situations that failed most.
+#  3. Stuck near the bay (stuck_steps_near_bay 400 = 8 s instead of 3 s): the agent experiences "stopped just short" and can
+#     learn to finish. Away from the bay the 3 s limit stays. Evaluation keeps the default (3 s everywhere).
+#  4. Training car park: geometry randomisation in half of its episodes only (geometry_share 0.5), so it is also trained in
+#     the standard form it is evaluated in (rounds 3 and 4 lost 8-23 points there).
+#  5. Stability: every fine-tune with generated car parks collapsed early (collisions to ~50% in 8M) while those without
+#     them did not (setup), so generated car parks come in more slowly (10% -> 25% -> 40% -> 50%), with a smaller
+#     PPO clip range (0.1) and a 4x larger buffer for steadier updates.
+#  Kept from round 4: bay-size observations, learning rate 1e-4, entropy bonus 1e-3, layout difficulty lessons, 40M steps.
+#
+# New build needed (code changed). Starts from the widened copy finetune_occ_s3_r5 (bay-size and near-ray inputs, 07-Training.md).
+# From the project folder, one window per seed (--env-args must come last):
+#   mlagents-learn Config/parking_ppo_round5.yaml --initialize-from=finetune_occ_s3_r5 --run-id=round5_s1 --seed=1 --env=Builds/ParkPilot/ParkPilot.exe --no-graphics --num-envs=4 --base-port=5005 --env-args --bay-size-obs --near-rays
+#   ... --run-id=round5_s2 --seed=2 --base-port=5015 --env-args --bay-size-obs --near-rays
+#   ... --run-id=round5_s3 --seed=3 --base-port=5025 --env-args --bay-size-obs --near-rays
+behaviors:
+  ParkingAgent:
+    trainer_type: ppo
+    hyperparameters:
+      batch_size: 1024
+      buffer_size: 40960          # 4x: steadier advantage estimates per update
+      learning_rate: 1.0e-4
+      beta: 1.0e-3
+      epsilon: 0.1                # smaller clip range: smaller policy change per update
+      lambd: 0.95
+      num_epoch: 3
+      learning_rate_schedule: constant
+    network_settings:
+      normalize: true
+      hidden_units: 256
+      num_layers: 2
+    reward_signals:
+      extrinsic:
+        gamma: 0.99
+        strength: 1.0
+    keep_checkpoints: 80
+    checkpoint_interval: 500000
+    max_steps: 40000000
+    time_horizon: 128
+    summary_freq: 10000
+
+environment_parameters:
+  curriculum_stage: 10.0
+  sparse_reward: 0.0
+  geometry_randomization: 1.0
+  geometry_share: 0.5             # training car park: half the episodes in its standard form
+  occupancy_randomization: 1.0
+  stuck_steps_near_bay: 400       # 8 s near / in the bay (3 s elsewhere)
+  procedural_layout:
+    curriculum:
+      - name: L1_wide_no_pillars
+        completion_criteria: {measure: progress, behavior: ParkingAgent, threshold: 0.15}
+        value: 0.1
+      - name: L2_walls
+        completion_criteria: {measure: progress, behavior: ParkingAgent, threshold: 0.35}
+        value: 0.25
+      - name: L3_full
+        completion_criteria: {measure: progress, behavior: ParkingAgent, threshold: 0.55}
+        value: 0.4
+      - name: L4_full_half
+        value: 0.5
+  procedural_difficulty:
+    curriculum:
+      - name: L1_wide_no_pillars
+        completion_criteria: {measure: progress, behavior: ParkingAgent, threshold: 0.15}
+        value: 0.0
+      - name: L2_walls
+        completion_criteria: {measure: progress, behavior: ParkingAgent, threshold: 0.35}
+        value: 1.0
+      - name: L3_full
+        completion_criteria: {measure: progress, behavior: ParkingAgent, threshold: 0.55}
+        value: 2.0
+      - name: L4_full_half
+        value: 2.0
+  hard_case_share:
+    curriculum:
+      - name: L1_wide_no_pillars    # no pillars or narrow aisles yet: hard cases are close starts on any bay
+        completion_criteria: {measure: progress, behavior: ParkingAgent, threshold: 0.15}
+        value: 0.25
+      - name: L2_walls
+        completion_criteria: {measure: progress, behavior: ParkingAgent, threshold: 0.35}
+        value: 0.35
+      - name: L3_full
+        completion_criteria: {measure: progress, behavior: ParkingAgent, threshold: 0.55}
+        value: 0.5
+      - name: L4_full_half
+        value: 0.5
+
+engine_settings:
+  time_scale: 20
+  target_frame_rate: -1
+  capture_frame_rate: 60

@@ -1,0 +1,53 @@
+# Round 6: far starts + route distance, from the A/B pilot's winner r6pilot_route (round5_s1 + 10M steps).
+# Changes to round 5: far starts in 40% of episodes (anywhere in the aisles, 10-40 m route, 60 s limit), the reward's distance
+# term along drivable space, gamma 0.995, time horizon 256, batch 2048, lr and entropy bonus decaying linearly, 80M steps.
+# Targets: generated car parks >= 95% (r6pilot_route: 90.2%), far starts as high as possible, no loss on the other sets.
+# Trains on the GPU (CUDA PyTorch in the mlagents venv). From the project folder, one window per seed (--env-args last):
+#   mlagents-learn Config/parking_ppo_round6.yaml --initialize-from=r6pilot_route --run-id=round6_s1 --seed=1 --env=Builds/ParkPilot/ParkPilot.exe --no-graphics --num-envs=4 --base-port=5005 --env-args --bay-size-obs --near-rays
+#   ... --run-id=round6_s2 --seed=2 --base-port=5015 ...   and   --run-id=round6_s3 --seed=3 --base-port=5025 ...
+behaviors:
+  ParkingAgent:
+    trainer_type: ppo
+    hyperparameters:
+      batch_size: 2048                # round 6: steadier gradients
+      buffer_size: 40960          # 4x: steadier advantage estimates per update
+      learning_rate: 1.0e-4
+      beta: 1.0e-3
+      epsilon: 0.1                # smaller clip range: smaller policy change per update
+      lambd: 0.95
+      num_epoch: 3
+      learning_rate_schedule: linear  # round 6: 1e-4 decaying to 0 over the run (settle the final policy)
+      beta_schedule: linear           # entropy bonus 1e-3 decaying (entropy rose in round 5, precision needs less noise)
+      epsilon_schedule: constant      # keep the clip range at 0.1 (ML-Agents would otherwise follow the lr schedule)
+    network_settings:
+      normalize: true
+      hidden_units: 256
+      num_layers: 2
+    reward_signals:
+      extrinsic:
+        gamma: 0.995                    # round 6: a far drive is 200-400 decisions, the parking reward must reach back
+        strength: 1.0
+    keep_checkpoints: 80
+    checkpoint_interval: 500000
+    max_steps: 80000000              # round 6: 80M (round 5 was still improving at 40M)
+    time_horizon: 256                 # round 6: longer episodes (far starts, 60 s)
+    summary_freq: 10000
+
+environment_parameters:
+  curriculum_stage: 10.0
+  sparse_reward: 0.0
+  geometry_randomization: 1.0
+  geometry_share: 0.5
+  occupancy_randomization: 1.0
+  stuck_steps_near_bay: 400
+  procedural_layout: 0.5
+  procedural_difficulty: 2.0
+  hard_case_share: 0.5
+  far_start_share: 0.4            # round 6: 40% of episodes start anywhere in the aisles (10-40 m route), 60% as before
+  route_distance: 1.0             # pilot result: route distance, better on normal starts, equal on far starts
+  route_clearance: 0.3
+  empty_bay_cost: 3.0
+engine_settings:
+  time_scale: 20
+  target_frame_rate: -1
+  capture_frame_rate: 60

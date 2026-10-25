@@ -1,0 +1,7 @@
+Batch 1017-164838: 30/30 parked (100%), policy full3_s1, hand-over aisle
+  Inner: 9/9 parked
+  Outer: 11/11 parked
+  Sideways: 8/8 parked
+  Corner: 2/2 parked
+  parked in 4.9 s on average
+  hand-over distance: parked 9.1 m, failed 0.0 m on average

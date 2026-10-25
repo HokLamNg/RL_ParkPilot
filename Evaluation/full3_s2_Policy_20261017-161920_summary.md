@@ -1,0 +1,17 @@
+# Evaluation: full3_s2 (Policy, deterministic)
+
+Seeds: 100000 + stage x 1000 + area; 10 episodes per area per stage; 40 areas.
+
+| Stage | Episodes | Success | Collision | Stuck | No progress | Timeout | Out of bounds | Time to park (s) | Final dist (m) | Heading err (°) |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 4 | 400 | 97.3% | 0.5% | 2.3% | 0.0% | 0.0% | 0.0% | 4.9 | 0.25 | 1.7 |
+| 6 | 400 | 97.8% | 0.3% | 2.0% | 0.0% | 0.0% | 0.0% | 4.8 | 0.25 | 1.6 |
+| 10 | 400 | 98.3% | 0.3% | 1.5% | 0.0% | 0.0% | 0.0% | 6.2 | 0.26 | 1.8 |
+
+**Success by bay group** (per stage):
+
+- Stage 4: Inner 97.3% (n=400)
+- Stage 6: Inner 96.8% (n=219), Outer 98.9% (n=181)
+- Stage 10: Corner 95.5% (n=66), Inner 97.3% (n=147), Outer 100.0% (n=101), Sideways 100.0% (n=86)
+
+Per-episode details (spawn pose, approach, finish direction, neighbours) are in the CSV.

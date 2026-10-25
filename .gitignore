@@ -1,0 +1,94 @@
+# ---- Unity generated ----
+/[Ll]ibrary/
+/[Tt]emp/
+/[Oo]bj/
+/[Bb]uild/
+/[Bb]uilds/
+/[Ll]ogs/
+/[Uu]ser[Ss]ettings/
+/[Mm]emoryCaptures/
+/[Rr]ecordings/
+
+# Asset meta data should only be ignored when the corresponding asset is also ignored
+!/[Aa]ssets/**/*.meta
+
+# ---- IDE / generated project files ----
+.vs/
+.vscode/
+.idea/
+*.csproj
+*.unityproj
+*.sln
+*.suo
+*.tmp
+*.user
+*.userprefs
+*.pidb
+*.booproj
+*.svd
+*.pdb
+*.mdb
+*.opendb
+*.VC.db
+*.pidb.meta
+*.pdb.meta
+*.mdb.meta
+.vsconfig
+
+# ---- Unity crash / build artefacts ----
+sysinfo.txt
+*.apk
+*.aab
+*.unitypackage
+*.app
+crashlytics-build.properties
+/[Aa]ssets/[Ss]treamingAssets/aa.meta
+/[Aa]ssets/[Ss]treamingAssets/aa/*
+
+# ---- ML-Agents / Python ----
+# Profiling output rewritten on every Play
+/[Aa]ssets/ML-Agents/
+/[Aa]ssets/ML-Agents.meta
+/results/
+/summaries/
+/models/
+__pycache__/
+*.pyc
+.venv/
+venv/
+python-envs/
+*.csv.tmp
+
+# ---- OS ----
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ---- Unity side effects ----
+# Scene backups Unity writes after a crash
+/[Aa]ssets/_Recovery/
+/[Aa]ssets/_Recovery.meta
+# Written by the performance-testing package on every player build
+/[Aa]ssets/Resources/PerformanceTestRun*
+/[Aa]ssets/Resources/PerformanceTestRun*.meta
+/[Aa]ssets/Resources.meta
+
+# Office lock files (document open in Word)
+~$*
+
+# Downloaded datasets (CNRPark+EXT, ~1.5 GB)
+/Data/
+
+/Scenarios/*
+!/Scenarios/showcase/
+/Scenarios/showcase/*
+!/Scenarios/showcase/batch_*.txt
+!/Scenarios/showcase/results*.csv
+
+/Analysis/
+/requirements/
+/Assets/Project/Scripts/Editor/
+/Assets/Project/Scripts/Editor.meta
+
+# Local backups (docs as they were with commit IDs), never in git
+/LocalBackup/

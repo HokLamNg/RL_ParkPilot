@@ -1,0 +1,8 @@
+Batch 1011-032702: 27/30 parked (90%), policy finetune_occ_s3, hand-over centre
+  Corner: 4/4 parked
+  Inner: 14/16 parked
+  Outer: 9/10 parked
+  Collision (car): 2  bays Bay_S2_W1 Bay_N1_W2
+  Stuck: 1  bays Bay_N2_W2
+  parked in 9.7 s on average
+  hand-over distance: parked 18.0 m, failed 17.9 m on average

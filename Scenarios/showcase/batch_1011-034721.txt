@@ -1,0 +1,9 @@
+Batch 1011-034721: 24/30 parked (80%), policy finetune_occ_s3, hand-over aisle
+  Inner: 17/20 parked
+  Corner: 1/4 parked
+  Outer: 6/6 parked
+  Collision (car): 3  bays Bay_S2_W1 Bay_S1_E1 Bay_S1_E1
+  Stuck: 2  bays Bay_N2_E3 Bay_N1_W1
+  Collision (boundary wall): 1  bays Bay_S2_W1
+  parked in 6.4 s on average
+  hand-over distance: parked 8.7 m, failed 9.3 m on average

@@ -1,0 +1,8 @@
+Batch 1015-175940: 28/30 parked (93%), policy rdqn2_s2, hand-over aisle
+  Outer: 9/9 parked
+  Sideways: 7/7 parked
+  Inner: 9/11 parked
+  Corner: 3/3 parked
+  Stuck: 2  bays Bay_S2_E3 Bay_S2_E1
+  parked in 5.0 s on average
+  hand-over distance: parked 9.2 m, failed 10.0 m on average

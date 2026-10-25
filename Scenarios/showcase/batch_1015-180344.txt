@@ -1,0 +1,7 @@
+Batch 1015-180344: 30/30 parked (100%), policy rdqn2_s2, hand-over centre
+  Inner: 13/13 parked
+  Sideways: 6/6 parked
+  Outer: 8/8 parked
+  Corner: 3/3 parked
+  parked in 8.7 s on average
+  hand-over distance: parked 17.3 m, failed 0.0 m on average

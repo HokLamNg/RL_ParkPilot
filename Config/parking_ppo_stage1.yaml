@@ -1,0 +1,45 @@
+# Stage 1 baseline: one fixed bay, near spawn, no obstacles.
+# Run from the project root with the venv active:
+#   mlagents-learn Config/parking_ppo_stage1.yaml --run-id=stage1_ppo_s1 --seed=1
+# then press Play in Unity when the trainer prints "Listening on port 5004".
+# Pass criterion: TensorBoard "Parking/SuccessRate" > 0.9.
+#
+# Experiment D (PPO vs SAC): this is the PPO side. Its counterpart is Config/parking_sac_stage1.yaml,
+# with the same environment (stage 0, shaped reward), network (2 x 256), gamma and step budget (500k).
+#   mlagents-learn Config/parking_ppo_stage1.yaml --run-id=expD_ppo_s1 --seed=1   (then s2, s3)
+# The stage1_ppo_s1-s3 runs from 2026-10-01/02 used reward v1 and the old car; re-run for Experiment D.
+
+behaviors:
+  ParkingAgent:
+    trainer_type: ppo
+    hyperparameters:
+      batch_size: 1024
+      buffer_size: 10240
+      learning_rate: 3.0e-4
+      beta: 5.0e-3
+      epsilon: 0.2
+      lambd: 0.95
+      num_epoch: 3
+      learning_rate_schedule: linear
+    network_settings:
+      normalize: true
+      hidden_units: 256
+      num_layers: 2
+    reward_signals:
+      extrinsic:
+        gamma: 0.99
+        strength: 1.0
+    keep_checkpoints: 5
+    checkpoint_interval: 100000
+    max_steps: 500000      # Experiment D budget (both algorithms); Stage 1 levels off well before this
+    time_horizon: 128
+    summary_freq: 10000
+
+environment_parameters:
+  curriculum_stage: 0.0   # index into ParkingEnvironment.stages
+  sparse_reward: 0.0      # 0 = shaped reward, 1 = sparse (Experiment B)
+
+engine_settings:
+  time_scale: 20
+  target_frame_rate: -1
+  capture_frame_rate: 60

@@ -1,0 +1,75 @@
+# Fine-tuning round 4: bay-size observations + a layout curriculum.
+# Changes against round 3 (parking_ppo_finetune_proc*.yaml):
+#  1. The agent also observes the target bay's width and length (11 vector inputs instead of 9). Turned on in the build
+#     with --env-args --bay-size-obs (ParkingAgent.BaySizeObservation); off for every older model.
+#  2. Warm start from finetune_occ_s3 with the two new inputs added at zero weight
+#     (results/finetune_occ_s3_bay): at step 0 the policy acts exactly like finetune_occ_s3.
+#  3. Generated car parks introduced in three lessons (procedural_difficulty, ProceduralLot.ForDifficulty):
+#       0-8M   : 25% of episodes generated, aisles 8-11 m, no pillars, no walls between rows
+#       8-16M  : 40%, aisles 7-11 m, walls between rows
+#       16-40M : 50%, the full generator (aisles 6-11 m, pillars)
+#     ML-Agents can only advance lessons on reward or training progress (not on a custom success rate), and the reward
+#     mixes both kinds of car park, so the lessons follow a fixed step schedule.
+#  4. The gentler settings of the round-3 continuation for the whole run: learning rate 1e-4, entropy bonus 1e-3; 40M steps.
+#
+# New build needed (code changed). Starts from the widened copy finetune_occ_s3_bay (07-Training.md).
+# From the project folder, one window per seed (--env-args must come last):
+#   mlagents-learn Config/parking_ppo_round4_bay.yaml --initialize-from=finetune_occ_s3_bay --run-id=round4_bay_s1 --seed=1 --env=Builds/ParkPilot/ParkPilot.exe --no-graphics --num-envs=4 --base-port=5005 --env-args --bay-size-obs
+#   ... --run-id=round4_bay_s2 --seed=2 --base-port=5015 --env-args --bay-size-obs
+#   ... --run-id=round4_bay_s3 --seed=3 --base-port=5025 --env-args --bay-size-obs
+behaviors:
+  ParkingAgent:
+    trainer_type: ppo
+    hyperparameters:
+      batch_size: 1024
+      buffer_size: 10240
+      learning_rate: 1.0e-4
+      beta: 1.0e-3
+      epsilon: 0.2
+      lambd: 0.95
+      num_epoch: 3
+      learning_rate_schedule: constant
+    network_settings:
+      normalize: true
+      hidden_units: 256
+      num_layers: 2
+    reward_signals:
+      extrinsic:
+        gamma: 0.99
+        strength: 1.0
+    keep_checkpoints: 80          # every checkpoint (40M / 500k)
+    checkpoint_interval: 500000
+    max_steps: 40000000
+    time_horizon: 128
+    summary_freq: 10000
+
+environment_parameters:
+  curriculum_stage: 10.0          # full task
+  sparse_reward: 0.0
+  geometry_randomization: 1.0
+  occupancy_randomization: 1.0
+  procedural_layout:
+    curriculum:
+      - name: L1_wide_no_pillars
+        completion_criteria: {measure: progress, behavior: ParkingAgent, threshold: 0.2}
+        value: 0.25
+      - name: L2_walls
+        completion_criteria: {measure: progress, behavior: ParkingAgent, threshold: 0.4}
+        value: 0.4
+      - name: L3_full
+        value: 0.5
+  procedural_difficulty:
+    curriculum:
+      - name: L1_wide_no_pillars
+        completion_criteria: {measure: progress, behavior: ParkingAgent, threshold: 0.2}
+        value: 0.0
+      - name: L2_walls
+        completion_criteria: {measure: progress, behavior: ParkingAgent, threshold: 0.4}
+        value: 1.0
+      - name: L3_full
+        value: 2.0
+
+engine_settings:
+  time_scale: 20
+  target_frame_rate: -1
+  capture_frame_rate: 60

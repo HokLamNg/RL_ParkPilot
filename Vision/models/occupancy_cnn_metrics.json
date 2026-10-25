@@ -1,0 +1,62 @@
+{
+  "dataset": "CNRPark-EXT patches, official day-based splits",
+  "classes": [
+    "free",
+    "occupied"
+  ],
+  "image_size": 64,
+  "epochs": 6,
+  "best_val_acc": 0.987772832090953,
+  "test_acc": 0.9903534956794973,
+  "test_precision_occupied": 0.9928685062263426,
+  "test_recall_occupied": 0.9903151674326987,
+  "test_confusion_true_by_pred": [
+    [
+      13419,
+      130
+    ],
+    [
+      177,
+      18099
+    ]
+  ],
+  "history": [
+    {
+      "epoch": 1,
+      "train_loss": 0.13627279011092633,
+      "train_acc": 0.9486628639158456,
+      "val_acc": 0.9733469190754545
+    },
+    {
+      "epoch": 2,
+      "train_loss": 0.0722496649869049,
+      "train_acc": 0.9754796651603822,
+      "val_acc": 0.9794068751005524
+    },
+    {
+      "epoch": 3,
+      "train_loss": 0.057251316126733925,
+      "train_acc": 0.9809721355021007,
+      "val_acc": 0.9812838526304499
+    },
+    {
+      "epoch": 4,
+      "train_loss": 0.046355492953633816,
+      "train_acc": 0.9849089350533902,
+      "val_acc": 0.9875046924438248
+    },
+    {
+      "epoch": 5,
+      "train_loss": 0.039511450698397114,
+      "train_acc": 0.9873641433756998,
+      "val_acc": 0.9870220410789939
+    },
+    {
+      "epoch": 6,
+      "train_loss": 0.035631981291848545,
+      "train_acc": 0.9884330056194639,
+      "val_acc": 0.987772832090953
+    }
+  ],
+  "parameters": 1142210
+}

@@ -1,0 +1,26 @@
+{
+  "note": "Curriculum for DQN/rdqn.py. A phase ends when the near-greedy agents' success rate (last 2000 episodes) reaches 'success' after 'min_steps', or at 'max_steps'. Steps are agent decisions. It follows PPO's path: stages 0-10 (Experiment A), then the fine-tuning conditions of rounds 2-6 (geometry and occupancy randomisation, generated car parks with a difficulty ramp and hard cases, far starts). route_distance in the last phase follows the round 6 A/B pilot result (log 43.5: route distance, 1). The file is re-read at every phase change.",
+  "base": {"sparse_reward": 0, "early_endings": 1},
+  "phases": [
+    {"name": "stage0",  "params": {"curriculum_stage": 0},  "success": 0.90, "min_steps": 300000,  "max_steps": 5000000},
+    {"name": "stage1",  "params": {"curriculum_stage": 1},  "success": 0.90, "min_steps": 300000,  "max_steps": 5000000},
+    {"name": "stage2",  "params": {"curriculum_stage": 2},  "success": 0.88, "min_steps": 500000,  "max_steps": 6000000},
+    {"name": "stage3",  "params": {"curriculum_stage": 3},  "success": 0.88, "min_steps": 500000,  "max_steps": 6000000},
+    {"name": "stage4",  "params": {"curriculum_stage": 4},  "success": 0.88, "min_steps": 1000000, "max_steps": 8000000},
+    {"name": "stage5",  "params": {"curriculum_stage": 5},  "success": 0.88, "min_steps": 1000000, "max_steps": 8000000},
+    {"name": "stage6",  "params": {"curriculum_stage": 6},  "success": 0.88, "min_steps": 1000000, "max_steps": 8000000},
+    {"name": "stage7",  "params": {"curriculum_stage": 7},  "success": 0.88, "min_steps": 1000000, "max_steps": 8000000},
+    {"name": "stage8",  "params": {"curriculum_stage": 8},  "success": 0.88, "min_steps": 1000000, "max_steps": 8000000},
+    {"name": "stage9",  "params": {"curriculum_stage": 9},  "success": 0.88, "min_steps": 1000000, "max_steps": 8000000},
+    {"name": "stage10", "params": {"curriculum_stage": 10}, "success": 0.88, "min_steps": 2000000, "max_steps": 10000000},
+    {"name": "real_car_parks", "params": {"curriculum_stage": 10, "geometry_randomization": 1, "geometry_share": 0.5, "occupancy_randomization": 1, "stuck_steps_near_bay": 400},
+     "success": 0.85, "min_steps": 4000000, "max_steps": 12000000},
+    {"name": "generated_L0", "params": {"curriculum_stage": 10, "geometry_randomization": 1, "geometry_share": 0.5, "occupancy_randomization": 1, "stuck_steps_near_bay": 400, "procedural_layout": 0.1, "procedural_difficulty": 0, "hard_case_share": 0.25},
+     "success": 0.85, "min_steps": 4000000, "max_steps": 10000000},
+    {"name": "generated_L1", "params": {"curriculum_stage": 10, "geometry_randomization": 1, "geometry_share": 0.5, "occupancy_randomization": 1, "stuck_steps_near_bay": 400, "procedural_layout": 0.25, "procedural_difficulty": 1, "hard_case_share": 0.35},
+     "success": 0.83, "min_steps": 6000000, "max_steps": 12000000},
+    {"name": "generated_L2", "params": {"curriculum_stage": 10, "geometry_randomization": 1, "geometry_share": 0.5, "occupancy_randomization": 1, "stuck_steps_near_bay": 400, "procedural_layout": 0.5, "procedural_difficulty": 2, "hard_case_share": 0.5},
+     "success": 0.83, "min_steps": 10000000, "max_steps": 25000000},
+    {"name": "far_starts", "params": {"curriculum_stage": 10, "geometry_randomization": 1, "geometry_share": 0.5, "occupancy_randomization": 1, "stuck_steps_near_bay": 400, "procedural_layout": 0.5, "procedural_difficulty": 2, "hard_case_share": 0.5, "far_start_share": 0.4, "route_distance": 1, "route_clearance": 0.3, "empty_bay_cost": 3}}
+  ]
+}

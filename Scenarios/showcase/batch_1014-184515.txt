@@ -1,0 +1,9 @@
+Batch 1014-184515: 22/30 parked (73%), policy round5_s1, hand-over centre
+  Inner: 12/12 parked
+  Sideways: 5/7 parked
+  Outer: 5/9 parked
+  Corner: 0/2 parked
+  Collision (car): 7  bays Bay_S1_W2 Bay_S1_W2 Bay_N1_E1 Bay_S1_W2 Bay_MidN_2 Bay_N1_E1 Bay_N1_E2
+  Stuck: 1  bays Bay_MidN_3
+  parked in 9.3 s on average
+  hand-over distance: parked 16.6 m, failed 20.0 m on average

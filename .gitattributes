@@ -1,0 +1,33 @@
+# Normalise line endings for text
+* text=auto
+
+# Unity YAML: keep LF so diffs are identical on every team member's machine
+*.unity        text eol=lf
+*.prefab       text eol=lf
+*.asset        text eol=lf
+*.mat          text eol=lf
+*.meta         text eol=lf
+*.controller   text eol=lf
+*.anim         text eol=lf
+*.cs           text diff=csharp
+*.yaml         text eol=lf
+*.md           text
+
+# Large binaries -> Git LFS (the asset pack is ~540 MB; Baked.psd alone is 307 MB,
+# above GitHub's 100 MB per-file limit)
+*.psd   filter=lfs diff=lfs merge=lfs -text
+*.tga   filter=lfs diff=lfs merge=lfs -text
+*.png   filter=lfs diff=lfs merge=lfs -text
+*.jpg   filter=lfs diff=lfs merge=lfs -text
+*.jpeg  filter=lfs diff=lfs merge=lfs -text
+*.exr   filter=lfs diff=lfs merge=lfs -text
+*.hdr   filter=lfs diff=lfs merge=lfs -text
+*.tif   filter=lfs diff=lfs merge=lfs -text
+*.fbx   filter=lfs diff=lfs merge=lfs -text
+*.FBX   filter=lfs diff=lfs merge=lfs -text
+*.obj   filter=lfs diff=lfs merge=lfs -text
+*.wav   filter=lfs diff=lfs merge=lfs -text
+*.mp3   filter=lfs diff=lfs merge=lfs -text
+*.mp4   filter=lfs diff=lfs merge=lfs -text
+*.onnx  filter=lfs diff=lfs merge=lfs -text
+LightingData.asset filter=lfs diff=lfs merge=lfs -text
