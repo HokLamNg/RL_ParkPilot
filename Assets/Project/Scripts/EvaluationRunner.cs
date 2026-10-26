@@ -43,6 +43,9 @@ namespace ParkPilot
                  "decision, like training. Use the policy's own std divided by 3 (e.g. round4_bay_s1: 0.22, 0.20; " +
                  "finetune_occ_s3: 0.42, 0.35). Needs Deterministic on (Unity's stochastic mode does not resample). 0 = off.")]
         public Vector2 actionNoise = Vector2.zero;
+        [Tooltip("SAC check: sets every car's throttle dead zone for this evaluation (0 = off: no auto-brake, the car " +
+                 "coasts at 1.5 m/s^2 and the throttle is not rescaled). -1 = keep the car's own value (0.15).")]
+        public float throttleDeadzoneOverride = -1f;
 
         [Header("Test set")]
         [Tooltip("Curriculum stages to evaluate, in order (e.g. 4 = random inner bay, 6 = inner + outer, 10 = full task).")]
@@ -126,6 +129,7 @@ namespace ParkPilot
                 if (!env) continue;
                 areaOf[agent] = envs.IndexOf(env);
                 agent.EpisodeFinished += OnEpisodeFinished;
+                if (throttleDeadzoneOverride >= 0f) agent.GetComponent<CarController>().throttleDeadzone = throttleDeadzoneOverride;
             }
 
             Time.timeScale = timeScale;
@@ -146,13 +150,15 @@ namespace ParkPilot
             stageIndex = -1;
             finished = false;
             basePath = Path.GetFullPath(Path.Combine(Application.dataPath, "..", outputFolder,
-                $"{label}_{mode}{(mode == Mode.Policy && !deterministic ? "_stochastic" : "")}{(mode == Mode.Policy && actionNoise != Vector2.zero ? $"_noise{actionNoise.x:0.00}-{actionNoise.y:0.00}" : "")}{(geometryRandomization ? "_geomrand" : "")}{(occupancyRandomization ? "_occrand" : "")}{(proceduralLayouts ? "_proc" : "")}{(farStarts ? "_far" : "")}_{System.DateTime.Now:yyyyMMdd-HHmmss}"));
+                $"{label}_{mode}{(mode == Mode.Policy && !deterministic ? "_stochastic" : "")}{(mode == Mode.Policy && actionNoise != Vector2.zero ? $"_noise{actionNoise.x:0.00}-{actionNoise.y:0.00}" : "")}{(throttleDeadzoneOverride >= 0f ? $"_dz{throttleDeadzoneOverride:0.00}" : "")}{(geometryRandomization ? "_geomrand" : "")}{(occupancyRandomization ? "_occrand" : "")}{(proceduralLayouts ? "_proc" : "")}{(farStarts ? "_far" : "")}_{System.DateTime.Now:yyyyMMdd-HHmmss}"));
             Directory.CreateDirectory(Path.GetDirectoryName(basePath));
             csv = new StreamWriter(basePath + ".csv", false, new UTF8Encoding(false));
             csv.WriteLine("label,mode,deterministic,stage,area,area_episode,outcome,success,steps,seconds,target_bay,group,occupied_neighbours," +
                           "spawn_heading_deg,spawn_lateral_m,spawn_distance_m,spawn_fallback,approach,turn_before_entry_deg,finish_direction," +
                           "entries,entry_speed,final_distance_m,final_heading_err_deg,soft_contacts,reward,collided_with," +
-                          "bay_width_m,bay_length_m,aisle_width_m,pillar_beside,wall_behind,row_end,occupied_bays,total_bays,neighbour_left,neighbour_right,spawn_far,spawn_route_m");
+                          "bay_width_m,bay_length_m,aisle_width_m,pillar_beside,wall_behind,row_end,occupied_bays,total_bays,neighbour_left,neighbour_right,spawn_far,spawn_route_m," +
+                          "mean_abs_throttle,throttle_lt_015_share,stopped_lt_015_share," +
+                          "tail_lt_015_share,tail_015_030_share,tail_mean_abs_throttle,tail_mean_abs_speed,tail_direction_changes");
             Debug.Log($"[EvaluationRunner] Job {jobIndex + 1}/{jobs.Count}: {label} / {mode}: {envs.Count} areas, {areaOf.Count} agents, stages {string.Join(",", stages)}, " +
                       $"{episodesPerArea} episodes per area per stage. Writing {basePath}.csv", this);
             NextStage();
@@ -235,6 +241,8 @@ namespace ParkPilot
                 t ? B(t.layoutPillarBeside) : "", t ? B(t.layoutWallBehind) : "", t ? B(t.layoutRowEnd) : "",
                 around.occupied.ToString(ci), around.total.ToString(ci), B(around.left), B(around.right),
                 B(r.spawnFar), F(r.spawnRoute),
+                F(r.meanAbsThrottle), F(r.throttleLowShare), F(r.stoppedLowShare),
+                F(r.tailLowShare), F(r.tailNearShare), F(r.tailMeanAbsThrottle), F(r.tailMeanAbsSpeed), r.tailDirectionChanges.ToString(ci),
             }));
             csv.Flush();
         }
@@ -272,6 +280,8 @@ namespace ParkPilot
             sb.AppendLine();
             if (mode == Mode.Policy && actionNoise != Vector2.zero)
                 sb.AppendLine($"Action noise (sampled like training): std {actionNoise.x:0.00} steering, {actionNoise.y:0.00} throttle, redrawn each decision.\n");
+            if (throttleDeadzoneOverride >= 0f)
+                sb.AppendLine($"Throttle dead zone set to {throttleDeadzoneOverride:0.00} for this evaluation (trained with 0.15).\n");
             sb.AppendLine($"Seeds: {seedBase} + stage x 1000 + area; {episodesPerArea} episodes per area per stage; {envs.Count} areas." +
                           (geometryRandomization ? " Geometry randomisation ON (target bay size, parked cars moved / turned / resized)." : "") +
                           (occupancyRandomization ? " Occupancy randomisation ON (0-27 parked cars on the training car park, 0-90% of the bays on generated car parks)." : "") +

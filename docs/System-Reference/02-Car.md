@@ -25,7 +25,7 @@ stable at the high time scales used for training (time scale 20).
 | `SetExternalControl(on)`, `MoveExternally(...)`, `ExternallyControlled` | showcase only: a script drives the car as a kinematic body. The car's own dynamics are paused | 113-131 |
 
 Who calls what (verified by search):
-- `ParkingAgent` sets the inputs from the policy's actions (`ParkingAgent.cs:394`), and reads `Speed`, `SteerAngle`,
+- `ParkingAgent` sets the inputs from the policy's actions (`ParkingAgent.cs:403`), and reads `Speed`, `SteerAngle`,
   `Body.linearVelocity` and `Body.angularVelocity` for observations, the parked check and diagnostics.
 - `ParkingEnvironment` places the car at the start of every episode with `Teleport` (`ParkingEnvironment.cs:442` for a
   start in front of the bay in `PlaceCar`, `:479` for a far start in `PlaceFar`, and `:535` for a scenario start pose).

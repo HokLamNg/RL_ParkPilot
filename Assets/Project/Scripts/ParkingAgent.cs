@@ -48,6 +48,15 @@ namespace ParkPilot
             public string collidedWith;      // collision only: car / pillar / row wall / boundary wall
             public bool spawnFar;            // round 6: started far from the bay (far start or a scenario start over 15 m)
             public float spawnRoute;         // round 6: route distance from the start to the bay (m), -1 if not computed
+            // Throttle commands over the episode, per physics step (SAC dead-zone check)
+            public float meanAbsThrottle;    // mean |throttle| sent to the car
+            public float throttleLowShare;   // share of steps with |throttle| below 0.15, the trained dead zone
+            public float stoppedLowShare;    // share of steps with |throttle| below 0.15 while the car stands still
+            // The same over the episode's last 150 physics steps (3 s, the stuck window)
+            public float tailLowShare;       // |throttle| below 0.15 (inside the dead zone: auto-brake)
+            public float tailNearShare;      // |throttle| from 0.15 to 0.30 (just outside: under 18% of full acceleration)
+            public float tailMeanAbsThrottle, tailMeanAbsSpeed;
+            public int tailDirectionChanges; // sign changes of the throttle among the steps outside the dead zone
         }
 
         /// <summary>What Heuristic() does when the behaviour type is Heuristic Only (keyboard, or a baseline).</summary>
@@ -393,6 +402,7 @@ namespace ParkPilot
             }
             car.SetInputs(steer, throttle);
             episodeSteps++;
+            CountThrottle();
 
             if (!environment.SparseReward)
             {
@@ -647,7 +657,11 @@ namespace ParkPilot
                 collidedWith = result == Outcome.Collision ? lastCollision : "",
                 spawnFar = environment.FarStart,
                 spawnRoute = environment.SpawnRoute,
+                meanAbsThrottle = diagThrottleSteps > 0 ? diagAbsThrottleSum / diagThrottleSteps : 0f,
+                throttleLowShare = diagThrottleSteps > 0 ? diagThrottleLowSteps / (float)diagThrottleSteps : 0f,
+                stoppedLowShare = diagThrottleSteps > 0 ? diagStoppedLowSteps / (float)diagThrottleSteps : 0f,
             };
+            TailThrottleStats(ref r);
 
             // Shows up in TensorBoard under "Parking/..."
             var stats = Academy.Instance.StatsRecorder;
@@ -765,6 +779,59 @@ namespace ParkPilot
             diagMinHeadingAll4 = 180f;
             diagMinSpeedAligned = float.MaxValue;
             diagStepsAligned = 0;
+            diagThrottleSteps = diagThrottleLowSteps = diagStoppedLowSteps = 0;
+            diagAbsThrottleSum = 0f;
+            tailCount = tailPos = 0;
+        }
+
+        // Throttle commands per physics step, for evaluation only (no effect on observations, rewards or endings).
+        // Measured against 0.15, the dead zone the models were trained with, also when the car's dead zone is changed.
+        const float ThrottleLowBand = 0.15f;
+        int diagThrottleSteps, diagThrottleLowSteps, diagStoppedLowSteps;
+        float diagAbsThrottleSum;
+
+        void CountThrottle()
+        {
+            float absThrottle = Mathf.Abs(car.ThrottleInput);
+            diagThrottleSteps++;
+            diagAbsThrottleSum += absThrottle;
+            if (absThrottle < ThrottleLowBand)
+            {
+                diagThrottleLowSteps++;
+                if (Mathf.Abs(car.Speed) < 0.1f) diagStoppedLowSteps++;
+            }
+            tailThrottle[tailPos] = car.ThrottleInput;
+            tailSpeed[tailPos] = car.Speed;
+            tailPos = (tailPos + 1) % TailSteps;
+            if (tailCount < TailSteps) tailCount++;
+        }
+
+        // Ring buffer of the last 150 physics steps (the stuck window)
+        const int TailSteps = 150;
+        readonly float[] tailThrottle = new float[TailSteps], tailSpeed = new float[TailSteps];
+        int tailCount, tailPos;
+
+        void TailThrottleStats(ref EpisodeResult r)
+        {
+            if (tailCount == 0) return;
+            int low = 0, near = 0, changes = 0;
+            float sumThrottle = 0f, sumSpeed = 0f, lastSign = 0f;
+            for (int k = 0; k < tailCount; k++)
+            {
+                int i = (tailPos - tailCount + k + TailSteps) % TailSteps;   // oldest to newest
+                float t = tailThrottle[i], a = Mathf.Abs(t);
+                sumThrottle += a;
+                sumSpeed += Mathf.Abs(tailSpeed[i]);
+                if (a < ThrottleLowBand) { low++; continue; }
+                if (a < 0.3f) near++;
+                if (lastSign != 0f && Mathf.Sign(t) != lastSign) changes++;
+                lastSign = Mathf.Sign(t);
+            }
+            r.tailLowShare = low / (float)tailCount;
+            r.tailNearShare = near / (float)tailCount;
+            r.tailMeanAbsThrottle = sumThrottle / tailCount;
+            r.tailMeanAbsSpeed = sumSpeed / tailCount;
+            r.tailDirectionChanges = changes;
         }
 
         void UpdateDiagnostics()

@@ -133,6 +133,23 @@ fair comparison.
 Paired comparison on the same layouts, DQN (1e-4) vs PPO: s1 DQN better (7 vs 0), s2 equal, s3 PPO better
 (66 vs 4). DQN vs SAC: DQN better for every seed.
 
+### SAC dead-zone check
+
+SAC's stuck endings were explained by its mean throttle landing in the throttle dead zone. A re-evaluation of the same
+models tested this: stage 0, deterministic, the same 400 layouts, PPO as a control, once with the dead zone at 0.15 and
+once switched off (`EvaluationRunner.throttleDeadzoneOverride`, `08-Evaluation.md`).
+
+| Model | Dead zone 0.15 | Dead zone 0 |
+|---|---|---|
+| SAC s1 / s2 / s3 | 23.0 / 71.5 / 40.2% | 100.0 / 38.0 / 91.5% |
+| PPO s1 / s2 / s3 | 98.0 / 100.0 / 99.0% | 98.5 / 100.0 / 100.0% |
+
+At 0.15 the SAC results match the table above exactly (PPO s1, first in the queue, differs in 15 episodes). In SAC's
+stuck episodes the car does not stand still. Over the last 3 s it crawls at about 0.06 m/s, 0.4 to 0.5 m from the bay
+centre (seeds 1 and 3), with a throttle of about 0.18 to 0.21 at the edge of the dead zone, where the car brakes or
+barely accelerates. Without the dead zone, seeds 1 and 3 park and SAC averages 76.5% +/- 33.6, close to its 74.2% in
+training. Seed 2 gets worse because its throttle in those situations drops to about 0.04. PPO does not change.
+
 ## The collapse at lr 3e-4 (`diagnose_collapse.py`)
 
 ```

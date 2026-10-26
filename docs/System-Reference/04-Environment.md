@@ -95,7 +95,7 @@ Needs the route map (returns false without it). Up to `maxSpawnAttempts` = 30 tr
 The logged values differ from a near start: `SpawnDistance` is the straight-line distance to the bay centre,
 `SpawnLateral` is 0, and `SpawnYaw` is the signed angle between the bay's axis and the car's heading. A far start
 also raises the agent's time limit: `ParkingAgent.OnEpisodeBegin` sets `MaxStep` to at least `farStartMaxStep`
-(3000 physics steps = 60 s, instead of the prefab's 1500) while `FarStart` is true (`ParkingAgent.cs:263` and `:296`).
+(3000 physics steps = 60 s, instead of the prefab's 1500) while `FarStart` is true (`ParkingAgent.cs:272` and `:296`).
 
 ### Route map (round 6, `DrivableMap`)
 
@@ -126,7 +126,7 @@ route).
 
 `RewardDistance(worldPos)` (180-187): the route distance to the target centre when `UseRouteDistance` is on and the map
 is ready, else the straight-line distance on the ground. The agent's potential uses it for its far-range distance term
-(`ParkingAgent.cs:1004`). The other terms that depend on distance (alignment, line-up, slow approach) keep the
+(`ParkingAgent.cs:1071`). The other terms that depend on distance (alignment, line-up, slow approach) keep the
 straight-line distance (`06-Agent.md`).
 
 ### Curriculum stages (`DefaultStages`, 212-225, identical in the prefab)

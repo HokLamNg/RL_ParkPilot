@@ -18,7 +18,7 @@ exactly the same car parks from exactly the same start poses, so results can be 
 
 One session cannot mix models with different inputs (9-input, 11-input bay-size, 11 + 124 near-ray models). The
 runner configures the agents' observation switches from the first model in `Awake`, before the agents are enabled, and
-logs an error if the queue mixes input signatures (lines 87-97).
+logs an error if the queue mixes input signatures (lines 90-100).
 
 ## Settings
 
@@ -28,6 +28,7 @@ logs an error if the queue mixes input signatures (lines 87-97).
 | `model`, `modelQueue` | | `.onnx` model(s) |
 | `deterministic` | on | use the policy's mean action |
 | `actionNoise` | (0, 0) | evaluation with sampled actions: Gaussian noise (steer, throttle std) added to the mean action, redrawn each decision. Unity's own stochastic mode does not resample, so use this instead, with `deterministic` on |
+| `throttleDeadzoneOverride` | -1 | sets every car's throttle dead zone for this evaluation (SAC dead-zone check). 0 switches it off: no auto-brake, the car coasts at 1.5 m/s² and the throttle is not rescaled. -1 keeps the car's 0.15 |
 | `stages` | 4, 6, 10 | curriculum stages to test, in order |
 | `episodesPerArea` | 10 | layouts recorded per area per stage |
 | `seedBase` | 100000 | layout seeds = `seedBase + stage x 1000 + area index` |
@@ -38,7 +39,7 @@ logs an error if the queue mixes input signatures (lines 87-97).
 With 40 areas: 400 episodes per stage, 1,200 per evaluation (3 stages). Stage 4 targets only inner-row bays, stage 6
 inner and outer rows, stage 10 any bay, so corner and sideways bays appear only in stage 10.
 
-## How identical layouts are guaranteed (lines 120-215)
+## How identical layouts are guaranteed (lines 123-221)
 
 - Areas are ordered by position (z, then x), so area *i* is always the same area.
 - At the start of each stage every area is forced to that stage (`stageOverride`), its test-set switches are set
@@ -56,7 +57,9 @@ episodes per set (the ending changed in 25 to 94),
 with more stuck endings in the second session and success 0.6 to 1.8 points lower. The layouts are identical
 and the stuck and no-progress endings count physics steps, so the cause is not known yet (possibly inference or physics
 differences between sessions, the first session shared the machine with DQN training). Only compare models evaluated
-in the same session (put them in one Model Queue), and treat differences of a few episodes as noise.
+in the same session (put them in one Model Queue), and treat differences of a few episodes as noise. In the SAC dead-zone check the first model of a queue gave
+different results when repeated, while every later model reproduced exactly across sessions and queue orders, so the
+first model of a queue is the least reliable.
 
 ## Test sets used in the project
 
@@ -87,10 +90,10 @@ park and the original set (paired comparison) and level on both far-start sets, 
 
 ## Output (one CSV and one summary per model and set)
 
-File name: `Evaluation/<label>_<mode>[_stochastic][_noise<s>-<t>][_geomrand][_occrand][_proc][_far]_<yyyymmdd-hhmmss>.csv`
+File name: `Evaluation/<label>_<mode>[_stochastic][_noise<s>-<t>][_dz<d>][_geomrand][_occrand][_proc][_far]_<yyyymmdd-hhmmss>.csv`
 and `..._summary.md`.
 
-CSV columns (lines 152-155, 217-238), one row per episode:
+CSV columns (lines 156-161, 223-246), one row per episode:
 
 | Column(s) | Meaning |
 |---|---|
@@ -103,6 +106,8 @@ CSV columns (lines 152-155, 217-238), one row per episode:
 | `bay_width_m, bay_length_m, aisle_width_m, pillar_beside, wall_behind, row_end` | target bay layout (aisle and layout flags only on generated car parks) |
 | `occupied_bays, total_bays, neighbour_left, neighbour_right` | how full the car park was, which neighbour was occupied |
 | `spawn_far, spawn_route_m` | round 6: far start (1 / 0) and route distance from the start to the bay (m, -1 when no route map was built) |
+| `mean_abs_throttle, throttle_lt_015_share, stopped_lt_015_share` | throttle commands per physics step over the episode (files from 2026-10-26 on): mean \|throttle\|, the share inside ±0.15 (the trained dead zone) and the share inside ±0.15 while the car stands still (under 0.1 m/s) |
+| `tail_lt_015_share, tail_015_030_share, tail_mean_abs_throttle, tail_mean_abs_speed, tail_direction_changes` | the same over the last 150 physics steps (3 s, the stuck window): the share inside ±0.15, the share from 0.15 to 0.30, mean \|throttle\| and \|speed\|, and sign changes of the throttle outside ±0.15 |
 
 The summary states the seeds and which test-set switches were on (with far starts: "Far starts ON (anywhere in the
 aisles, 10-40 m route distance, 60 s limit)"), then gives, per stage: success, collision, stuck, no-progress, timeout

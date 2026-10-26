@@ -73,7 +73,7 @@ Derived from the bay's name (`GroupFromName`, 82-88):
 | `Inner` | everything else | N2_* and S2_* (12) |
 
 Uses: which bays a curriculum stage may target (`targetGroups`, `ParkingEnvironment.cs:24`, and `RandomTargetIndex`, `:610-621`, group test at `:614`), statistics per
-group (`Parking/ByGroup/...`, `ParkingAgent.cs:672`) and the `group` column of evaluation results. Generated bays are
+group (`Parking/ByGroup/...`, `ParkingAgent.cs:686`) and the `group` column of evaluation results. Generated bays are
 named `Bay_P00`, `Bay_P01`, ... (see `05-Generated-Car-Parks.md`), so they all count as `Inner`.
 
 ## Layout facts for generated bays
